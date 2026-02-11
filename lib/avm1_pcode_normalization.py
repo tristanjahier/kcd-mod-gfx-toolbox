@@ -3,23 +3,26 @@ import re
 from dataclasses import dataclass
 from lib.util import safe_filename
 
-LABEL_PREFIX_RE = re.compile(r'^\s*(?:loc[0-9a-fA-F]+|L\d+)\s*:\s*(.*)$')
+LABEL_PREFIX_RE = re.compile(r"^\s*(?:loc[0-9a-fA-F]+|L\d+)\s*:\s*(.*)$")
 LABEL_RE = re.compile(r"\b(?:loc[0-9a-fA-F]+|L\d+)\b")
 LABEL_NAME_RE = re.compile(r"^(?:loc[0-9a-fA-F]+|L\d+)$")
 DOT0_RE = re.compile(r"\b(-?\d+)\.0\b")  # 0.0, 1.0, 5.0...
-NEG0_RE = re.compile(r"\b-0\b") # -0
+NEG0_RE = re.compile(r"\b-0\b")  # -0
 
 REGISTER_RE = re.compile(r"\b(?:register|r)(\d+)\b")
-STORE_REGISTER_RE = re.compile(r'\bStoreRegister\s+(?:register|r)?(\d+)\b')
+STORE_REGISTER_RE = re.compile(r"\bStoreRegister\s+(?:register|r)?(\d+)\b")
 
 PUSH_SINGLE_RE = re.compile(r'^\s*Push\s+(?:register\d+|r\d+)\s*,\s*"([^"]+)"\s*$')
-PUSH_OBJ_RE = re.compile(r'^\s*Push\s+(?:register\d+|r\d+)\s*$')
+PUSH_OBJ_RE = re.compile(r"^\s*Push\s+(?:register\d+|r\d+)\s*$")
 PUSH_NAME_RE = re.compile(r'^\s*Push\s+"([^"]+)"\s*$')
 
-DEFINE_FUNCTION_ANY_RE = re.compile(r'^\s*DefineFunction(?:2)?\b')
-DEFINE_FUNCTION2_RE = re.compile(r'^\s*DefineFunction2\b')
-DEFINE_FUNCTION2_REGCOUNT_RE = re.compile(r'^(?P<head>\s*DefineFunction2\s+"[^"]*"\s*,\s*\d+\s*,\s*)\d+(?P<tail>\s*,.*)$')
+DEFINE_FUNCTION_ANY_RE = re.compile(r"^\s*DefineFunction(?:2)?\b")
+DEFINE_FUNCTION2_RE = re.compile(r"^\s*DefineFunction2\b")
+DEFINE_FUNCTION2_REGCOUNT_RE = re.compile(
+    r'^(?P<head>\s*DefineFunction2\s+"[^"]*"\s*,\s*\d+\s*,\s*)\d+(?P<tail>\s*,.*)$'
+)
 DEFINE_FUNCTION_HEADER_RE = re.compile(r'^\s*DefineFunction(?:2)?\s*"([^"]*)"\s*,\s*(\d+)')
+
 
 def strip_label(line: str) -> str:
     """
@@ -28,10 +31,9 @@ def strip_label(line: str) -> str:
     match = LABEL_PREFIX_RE.match(line)
     return match.group(1) if match else line
 
+
 def find_function_name_and_start_line(
-    lines: list[str],
-    define_function_idx: int,
-    max_lookback: int = 64
+    lines: list[str], define_function_idx: int, max_lookback: int = 64
 ) -> tuple[int, str] | None:
     """
     For a function definition keyword found at line `define_function_idx`,
@@ -42,7 +44,7 @@ def find_function_name_and_start_line(
 
     Return the start index and the function name if found, else None.
     """
-    i0 = max(0, define_function_idx - max_lookback) # lower bound of the lookback window
+    i0 = max(0, define_function_idx - max_lookback)  # lower bound of the lookback window
 
     # We scan the text backwards from the line of the function definition keyword.
     for i in range(define_function_idx - 1, i0 - 1, -1):
@@ -59,6 +61,7 @@ def find_function_name_and_start_line(
                 return (i - 1, match.group(1))
 
     return None
+
 
 def find_function_end_line(lines: list[str], define_function_idx: int) -> int:
     """
@@ -84,7 +87,8 @@ def find_function_end_line(lines: list[str], define_function_idx: int) -> int:
         if opening_seen and depth <= 0:
             return i
 
-    return len(lines) - 1 # Fallback; should never happen with well-formed p-code.
+    return len(lines) - 1  # Fallback; should never happen with well-formed p-code.
+
 
 def split_into_blocks(pcode_text: str) -> list[tuple[str, list[str]]]:
     """
@@ -145,7 +149,7 @@ def split_into_blocks(pcode_text: str) -> list[tuple[str, list[str]]]:
             name_occurrences[block_name] = count + 1
 
             if count > 0:
-                block_name = f"{block_name}__{count+1}"
+                block_name = f"{block_name}__{count + 1}"
 
             add_block(block_name, start, end + 1)
 
@@ -162,6 +166,7 @@ def split_into_blocks(pcode_text: str) -> list[tuple[str, list[str]]]:
 
     return blocks
 
+
 def split_comma_separated_operands(s: str) -> list[str]:
     """
     Split a comma-separated operand line while ignoring commas inside quotes.
@@ -176,7 +181,7 @@ def split_comma_separated_operands(s: str) -> list[str]:
         "cagada, ahah"
     """
     operands = []
-    buffer = [] # characters encountered before a comma
+    buffer = []  # characters encountered before a comma
     quoting = False
     escaping = False
 
@@ -197,7 +202,7 @@ def split_comma_separated_operands(s: str) -> list[str]:
             op = "".join(buffer).strip()
             if op:
                 operands.append(op)
-            buffer = [] # we just met a comma, so we reset the buffer
+            buffer = []  # we just met a comma, so we reset the buffer
             continue
         buffer.append(char)
 
@@ -205,6 +210,7 @@ def split_comma_separated_operands(s: str) -> list[str]:
         operands.append(op)
 
     return operands
+
 
 def extract_label_from_line(line: str) -> tuple[str, str | None]:
     """
@@ -217,6 +223,7 @@ def extract_label_from_line(line: str) -> tuple[str, str | None]:
             return (rest.lstrip(), label)
 
     return (line, None)
+
 
 def canonicalize_push_lines(lines: list[str]) -> list[str]:
     """
@@ -238,7 +245,7 @@ def canonicalize_push_lines(lines: list[str]) -> list[str]:
         labelless_line, label = extract_label_from_line(line)
 
         if labelless_line.startswith("Push "):
-            operands = split_comma_separated_operands(labelless_line[len("Push "):])
+            operands = split_comma_separated_operands(labelless_line[len("Push ") :])
             if len(operands) > 1:
                 # Put back the label on the first line only, if it was present.
                 label_prefix = label + ":" if label else ""
@@ -251,6 +258,7 @@ def canonicalize_push_lines(lines: list[str]) -> list[str]:
         canonicalized_lines.append(line)
 
     return canonicalized_lines
+
 
 def canonicalize_number_literals(lines: list[str]) -> list[str]:
     """
@@ -267,6 +275,7 @@ def canonicalize_number_literals(lines: list[str]) -> list[str]:
         canonicalized_lines.append(line)
 
     return canonicalized_lines
+
 
 def neutralize_definefunction2_register_operands(line: str) -> str:
     """
@@ -286,6 +295,7 @@ def neutralize_definefunction2_register_operands(line: str) -> str:
 
     return re.sub(r',\s*\d+\s*,\s*"([^"]+)"', r', N, "\1"', line)
 
+
 def canonicalize_definefunction_header_line(line: str) -> str:
     """
     Canonicalize DefineFunction/DefineFunction2 headers to one normalized form:
@@ -303,9 +313,9 @@ def canonicalize_definefunction_header_line(line: str) -> str:
     func_name = match.group(1)
     argc = int(match.group(2))
     quoted_operands = re.findall(r'"([^"]*)"', labelless_line)
-    arg_names = quoted_operands[1:1 + argc]
+    arg_names = quoted_operands[1 : 1 + argc]
 
-    normalized_line = f"DefineFunction \"{func_name}\", {argc}"
+    normalized_line = f'DefineFunction "{func_name}", {argc}'
     for arg in arg_names:
         normalized_line += f', "{arg}"'
     normalized_line += " {"
@@ -314,6 +324,7 @@ def canonicalize_definefunction_header_line(line: str) -> str:
     label_prefix = label + ":" if label else ""
 
     return f"{label_prefix}{normalized_line}"
+
 
 def canonicalize_function_definition_headers(lines: list[str]) -> list[str]:
     """
@@ -332,6 +343,7 @@ def canonicalize_function_definition_headers(lines: list[str]) -> list[str]:
         canonicalized_lines.append(line)
 
     return canonicalized_lines
+
 
 def canonicalize_labels(lines: list[str]) -> list[str]:
     """
@@ -357,11 +369,12 @@ def canonicalize_labels(lines: list[str]) -> list[str]:
 
     return canonicalized_lines
 
+
 def normalize_block(lines: list[str]) -> str:
     """
     Normalize a p-code block with multiple obscure techniques.
     """
-    lines = [ln.rstrip() for ln in lines if ln.strip()] # remove blank lines
+    lines = [ln.rstrip() for ln in lines if ln.strip()]  # remove blank lines
     lines = canonicalize_push_lines(lines)
     lines = canonicalize_number_literals(lines)
     lines = canonicalize_function_definition_headers(lines)
@@ -369,12 +382,14 @@ def normalize_block(lines: list[str]) -> str:
 
     return "\n".join(lines) + "\n"
 
+
 @dataclass(frozen=True)
 class NormalizationStats:
     total_blocks: int
     named_blocks: int
     anonymous_blocks: int
     toplevel_blocks: int
+
 
 def normalize_file(input_file: Path, output_dir: Path) -> NormalizationStats:
     """
@@ -399,8 +414,8 @@ def normalize_file(input_file: Path, output_dir: Path) -> NormalizationStats:
             named_count += 1
 
     return NormalizationStats(
-        total_blocks = len(blocks),
-        named_blocks = named_count,
-        anonymous_blocks = anon_count,
-        toplevel_blocks = gap_count,
+        total_blocks=len(blocks),
+        named_blocks=named_count,
+        anonymous_blocks=anon_count,
+        toplevel_blocks=gap_count,
     )

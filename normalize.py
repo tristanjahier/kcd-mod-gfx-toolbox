@@ -5,6 +5,7 @@ from pathlib import Path
 from lib.avm1_pcode_normalization import normalize_file
 from lib.util import AnsiColor, print_error
 
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("input_pcode", type=Path)
@@ -23,11 +24,12 @@ def main() -> int:
 
     print(
         f"{input_pcode.name}: split into {stats.total_blocks} blocks",
-        f"({stats.named_blocks} named, {stats.anonymous_blocks} anonymous, {stats.toplevel_blocks} top-level)"
+        f"({stats.named_blocks} named, {stats.anonymous_blocks} anonymous, {stats.toplevel_blocks} top-level)",
     )
 
     print(f"{AnsiColor.GREEN}Normalization complete.{AnsiColor.RESET}")
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

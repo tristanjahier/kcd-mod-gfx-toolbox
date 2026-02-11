@@ -6,11 +6,13 @@ import shutil
 import subprocess
 from lib.util import AnsiColor, ensure_empty_dir, print_error, sha256_str
 
+
 def read_arguments():
     argument_parser = argparse.ArgumentParser()
     argument_parser.add_argument("input_file", type=Path)
     argument_parser.add_argument("--ffdec", type=Path)
     return argument_parser.parse_args()
+
 
 def resolve_ffdec(arg: Path | None) -> Path:
     ffdec_path = arg
@@ -29,10 +31,12 @@ def resolve_ffdec(arg: Path | None) -> Path:
 
     return ffdec_path
 
+
 def extraction_cache_key(path: Path) -> str:
     st = path.stat()
     sig = f"{path.resolve()}|{st.st_mtime_ns}|{st.st_size}"
     return sha256_str(sig)
+
 
 def extract_gfx_contents(ffdec_bin_path: Path, file_path: Path, output_dir: Path):
     return subprocess.run(
@@ -41,8 +45,9 @@ def extract_gfx_contents(ffdec_bin_path: Path, file_path: Path, output_dir: Path
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         text=True,
-        check=True
+        check=True,
     )
+
 
 def main() -> int:
     args = read_arguments()
@@ -85,6 +90,7 @@ def main() -> int:
 
     print(f"{AnsiColor.GREEN}Extraction complete.{AnsiColor.RESET}")
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

@@ -3,13 +3,16 @@ import difflib
 from pathlib import Path
 from lib.util import list_tree_files, read_file_lines, sha256_file
 
+
 @dataclass(frozen=True)
 class FileChange:
     """
     A small container object for file changes.
     """
+
     path: Path
     changed: int
+
 
 def diff_file_trees_basic(dir1: Path, dir2: Path) -> tuple[list[Path], list[Path], list[Path]]:
     """
@@ -43,6 +46,7 @@ def diff_file_trees_basic(dir1: Path, dir2: Path) -> tuple[list[Path], list[Path
 
     return only_in_dir1, only_in_dir2, different
 
+
 def diff_texts(text1_lines: list[str], text2_lines: list[str]) -> int:
     """
     Compare two sets of text lines.
@@ -53,7 +57,8 @@ def diff_texts(text1_lines: list[str], text2_lines: list[str]) -> int:
     changed = 0
 
     for tag, i1, i2, j1, j2 in seqmatch.get_opcodes():
-        if tag == "equal": continue
+        if tag == "equal":
+            continue
 
         # i1:i2 is the line range in text 1.
         # j1:j2 is the line range in text 2.
@@ -68,6 +73,7 @@ def diff_texts(text1_lines: list[str], text2_lines: list[str]) -> int:
             changed += span_2
 
     return changed
+
 
 def diff_file_trees(
     dir1: Path,
@@ -85,6 +91,7 @@ def diff_file_trees(
     dir2_files = list_tree_files(dir2)
 
     if include_paths:
+
         def keep_path(p: Path) -> bool:
             return any(p.is_relative_to(path) for path in include_paths)
 

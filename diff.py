@@ -9,6 +9,7 @@ import argparse
 import shutil
 import subprocess
 
+
 def read_arguments():
     argument_parser = argparse.ArgumentParser()
     argument_parser.add_argument("file_a", type=Path)
@@ -28,6 +29,7 @@ def read_arguments():
     )
     argument_parser.set_defaults(use_extraction_cache=True)
     return argument_parser.parse_args()
+
 
 def main() -> int:
     args = read_arguments()
@@ -64,7 +66,6 @@ def main() -> int:
     print(f"{AnsiColor.LIGHT_YELLOW}File A:{AnsiColor.RESET} {file_a}")
     print(f"{AnsiColor.LIGHT_YELLOW}File B:{AnsiColor.RESET} {file_b}")
     print(f"{AnsiColor.LIGHT_YELLOW}Using ffdec:{AnsiColor.RESET} {ffdec_path}")
-
 
     # ================================================================
     # Step 1: extract contents from both files.
@@ -120,7 +121,6 @@ def main() -> int:
     else:
         print("Extraction directory already exists. Reusing.")
 
-
     # ================================================================
     # Step 2: perform a naive diff between the two directory trees.
 
@@ -152,7 +152,6 @@ def main() -> int:
         print(f"{AnsiColor.YELLOW}Common scripts are identical. Comparing the rest is not supported.{AnsiColor.RESET}")
         return 0
 
-
     # ================================================================
     # Step 3: normalize the differing scripts, to remove the noise in p-codes due to decompilation,
     # and to highlight the real logical differences. The normalization is done at a "block level".
@@ -171,8 +170,8 @@ def main() -> int:
     normalized_paths: list[Path] = []
 
     for rel_path in different:
-        src_a = extraction_dir_a / rel_path # script path inside file A
-        src_b = extraction_dir_b / rel_path # script path inside file B
+        src_a = extraction_dir_a / rel_path  # script path inside file A
+        src_b = extraction_dir_b / rel_path  # script path inside file B
 
         # Preserve tree structure and transform file "XXXX.pcode" into directory "XXXX/".
         normalized_blocks_dir_a = (normalization_dir_a / rel_path).with_suffix("")
@@ -203,16 +202,15 @@ def main() -> int:
     for rel_path, stats in normalization_results_a:
         print(
             f"{rel_path}    {stats.total_blocks} blocks ",
-            f"({stats.named_blocks} named, {stats.anonymous_blocks} anonymous, {stats.toplevel_blocks} top-level)"
+            f"({stats.named_blocks} named, {stats.anonymous_blocks} anonymous, {stats.toplevel_blocks} top-level)",
         )
 
     print(f"{file_b}:")
     for rel_path, stats in normalization_results_b:
         print(
             f"{rel_path}    {stats.total_blocks} blocks ",
-            f"({stats.named_blocks} named, {stats.anonymous_blocks} anonymous, {stats.toplevel_blocks} top-level)"
+            f"({stats.named_blocks} named, {stats.anonymous_blocks} anonymous, {stats.toplevel_blocks} top-level)",
         )
-
 
     # ================================================================
     # Step 4: compare normalized p-code blocks to spot the real differences.
@@ -220,13 +218,13 @@ def main() -> int:
     print(f"\n{AnsiColor.BLUE}» 4: Comparison of normalized code{AnsiColor.RESET}\n")
 
     only_in_a, only_in_b, changes = diff_file_trees(
-        normalization_dir_a,
-        normalization_dir_b,
-        include_paths=normalized_paths
+        normalization_dir_a, normalization_dir_b, include_paths=normalized_paths
     )
 
     if not changes and not only_in_a and not only_in_b:
-        print(f"{AnsiColor.GREEN}Normalized trees are identical. The difference might be decompilation noise only.{AnsiColor.RESET}")
+        print(
+            f"{AnsiColor.GREEN}Normalized trees are identical. The difference might be decompilation noise only.{AnsiColor.RESET}"
+        )
         return 0
 
     if only_in_a:
@@ -248,6 +246,7 @@ def main() -> int:
             print(f"{ch.path}    (lines changed: {ch.changed})")
 
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
