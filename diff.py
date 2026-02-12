@@ -8,6 +8,9 @@ from pathlib import Path
 import argparse
 import shutil
 import subprocess
+from rich.console import Console
+from rich.table import Table
+from rich import box
 
 
 def read_arguments():
@@ -66,6 +69,8 @@ def main() -> int:
     print(f"{AnsiColor.LIGHT_YELLOW}File A:{AnsiColor.RESET} {file_a}")
     print(f"{AnsiColor.LIGHT_YELLOW}File B:{AnsiColor.RESET} {file_b}")
     print(f"{AnsiColor.LIGHT_YELLOW}Using ffdec:{AnsiColor.RESET} {ffdec_path}")
+
+    console = Console()
 
     # ================================================================
     # Step 1: extract contents from both files.
@@ -199,18 +204,44 @@ def main() -> int:
             return 1
 
     print(f"{file_a}:")
+
+    norm_table1 = Table(box=box.SIMPLE, show_edge=False, pad_edge=False, show_header=False)
+    norm_table1.add_column("p-code file")
+    norm_table1.add_column("Blocks", justify="right")
+    norm_table1.add_column("Named", justify="right")
+    norm_table1.add_column("Anonymous", justify="right")
+    norm_table1.add_column("Top-level", justify="right")
+
     for rel_path, stats in normalization_results_a:
-        print(
-            f"{rel_path}    {stats.total_blocks} blocks ",
-            f"({stats.named_blocks} named, {stats.anonymous_blocks} anonymous, {stats.toplevel_blocks} top-level)",
+        norm_table1.add_row(
+            str(rel_path),
+            f"{stats.total_blocks} blocks",
+            f"{stats.named_blocks} named",
+            f"{stats.anonymous_blocks} anonymous",
+            f"{stats.toplevel_blocks} top-level",
         )
 
-    print(f"{file_b}:")
+    console.print(norm_table1)
+
+    print(f"\n{file_b}:")
+
+    norm_table2 = Table(box=box.SIMPLE, show_edge=False, pad_edge=False, show_header=False)
+    norm_table2.add_column("p-code file")
+    norm_table2.add_column("Blocks", justify="right")
+    norm_table2.add_column("Named", justify="right")
+    norm_table2.add_column("Anonymous", justify="right")
+    norm_table2.add_column("Top-level", justify="right")
+
     for rel_path, stats in normalization_results_b:
-        print(
-            f"{rel_path}    {stats.total_blocks} blocks ",
-            f"({stats.named_blocks} named, {stats.anonymous_blocks} anonymous, {stats.toplevel_blocks} top-level)",
+        norm_table2.add_row(
+            str(rel_path),
+            f"{stats.total_blocks} blocks",
+            f"{stats.named_blocks} named",
+            f"{stats.anonymous_blocks} anonymous",
+            f"{stats.toplevel_blocks} top-level",
         )
+
+    console.print(norm_table2)
 
     # ================================================================
     # Step 4: compare normalized p-code blocks to spot the real differences.
@@ -242,8 +273,13 @@ def main() -> int:
         changes.sort(key=lambda c: c.changed, reverse=True)
         print("Normalized blocks that differ:")
 
+        diff_table = Table(box=box.SIMPLE, show_edge=False, pad_edge=False, header_style=None)
+        diff_table.add_column("Relative inner path")
+        diff_table.add_column("Lines changed", justify="right")
         for ch in changes:
-            print(f"{ch.path}    (lines changed: {ch.changed})")
+            diff_table.add_row(str(ch.path), str(ch.changed))
+
+        console.print(diff_table)
 
     return 0
 
