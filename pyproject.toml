@@ -1,0 +1,9 @@
+[project]
+name = "kcd-mod-gfx-toolbox"
+version = "0.1.0"
+description = "CLI tool to compare two Scaleform .gfx files."
+requires-python = ">= 3.11"
+readme = "README.md"
+
+[tool.ruff]
+line-length = 120
