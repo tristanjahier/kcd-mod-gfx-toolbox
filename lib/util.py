@@ -4,6 +4,7 @@ import sys
 import hashlib
 from pathlib import Path
 from enum import StrEnum
+import tempfile
 
 
 class AnsiColor(StrEnum):
@@ -77,3 +78,10 @@ def safe_filename(name: str) -> str | None:
     None if impossible.
     """
     return re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip() or None
+
+
+def get_temp_dir() -> Path:
+    """
+    Get a path to a directory named after the project inside the system's temporary directory.
+    """
+    return Path(tempfile.gettempdir()) / "kcd-mod-gfx-toolbox"

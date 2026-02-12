@@ -3,7 +3,7 @@
 from extract import extraction_cache_key, resolve_ffdec, extract_gfx_contents
 from lib.avm1_pcode_normalization import NormalizationStats, normalize_file
 from lib.diff import diff_file_trees, diff_file_trees_basic
-from lib.util import AnsiColor, ensure_empty_dir, print_error
+from lib.util import AnsiColor, ensure_empty_dir, print_error, get_temp_dir
 from pathlib import Path
 import argparse
 import shutil
@@ -51,8 +51,7 @@ def main() -> int:
         print_error(f"Invalid input: {file_b} is not a file.")
         return 1
 
-    script_dir = Path(__file__).resolve().parent
-    temp_dir = script_dir / "temp"
+    temp_dir = get_temp_dir()
 
     if temp_dir.exists() and not temp_dir.is_dir():
         print_error(f"Temp path exists but is not a directory: {temp_dir}")

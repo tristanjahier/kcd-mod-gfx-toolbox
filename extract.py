@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 import shutil
 import subprocess
-from lib.util import AnsiColor, ensure_empty_dir, print_error, sha256_str
+from lib.util import AnsiColor, ensure_empty_dir, get_temp_dir, print_error, sha256_str
 
 
 def read_arguments():
@@ -58,12 +58,13 @@ def main() -> int:
         print_error(f"Invalid input: {input_file} does not exist or is not a file.")
         return 1
 
-    script_dir = Path(__file__).resolve().parent
-    temp_dir = script_dir / "temp"
+    temp_dir = get_temp_dir()
 
-    if not temp_dir.is_dir():
-        print_error("Temp directory does not exist or is not a directory.")
+    if temp_dir.exists() and not temp_dir.is_dir():
+        print_error(f"Temp path exists but is not a directory: {temp_dir}")
         return 1
+
+    temp_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         ffdec_path = resolve_ffdec(args.ffdec)

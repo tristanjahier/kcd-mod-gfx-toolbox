@@ -31,7 +31,7 @@ The command proceeds in four steps:
 3. Split those scripts into logical blocks and normalize them.
 4. Compare normalized blocks and report the most changed blocks (by line count).
 
-Temporary files will be written in the `temp/` directory at the root of this repository.
+Intermediate files will be written to your system’s temporary directory.
 
 ### Extract scripts only
 
@@ -39,7 +39,7 @@ Temporary files will be written in the `temp/` directory at the root of this rep
 python extract.py a/path/to/file.gfx --ffdec "/the/path/to/ffdec"
 ```
 
-Currently, extraction output is always written under the repository’s `temp/` directory.
+Currently, extraction output is always written to your system’s temporary directory.
 
 ### Normalize a `.pcode` file into blocks
 
