@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
-from extract import extraction_cache_key, resolve_ffdec, extract_gfx_contents
-from lib.avm1_pcode_normalization import NormalizationStats, normalize_file
-from lib.diff import diff_file_trees, diff_file_trees_basic
-from lib.util import AnsiColor, ensure_empty_dir, print_error, get_temp_dir
+from .extract import extraction_cache_key, resolve_ffdec, extract_gfx_contents
+from .lib.avm1_pcode_normalization import NormalizationStats, normalize_file
+from .lib.diff import diff_file_trees, diff_file_trees_basic
+from .lib.util import AnsiColor, ensure_empty_dir, print_error, get_temp_dir
 from pathlib import Path
 import argparse
 import shutil

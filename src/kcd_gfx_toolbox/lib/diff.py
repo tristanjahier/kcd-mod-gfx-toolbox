@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import difflib
 from pathlib import Path
-from lib.util import list_tree_files, read_file_lines, sha256_file
+from .util import list_tree_files, read_file_lines, sha256_file
 
 
 @dataclass(frozen=True)

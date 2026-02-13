@@ -1,7 +1,7 @@
 from pathlib import Path
 import re
 from dataclasses import dataclass
-from lib.util import safe_filename
+from .util import safe_filename
 
 LABEL_PREFIX_RE = re.compile(r"^\s*(?:loc[0-9a-fA-F]+|L\d+)\s*:\s*(.*)$")
 LABEL_RE = re.compile(r"\b(?:loc[0-9a-fA-F]+|L\d+)\b")

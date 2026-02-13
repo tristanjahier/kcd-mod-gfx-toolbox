@@ -8,5 +8,17 @@ dependencies = [
     "rich>=14.3.2",
 ]
 
+[build-system]
+requires = ["uv_build >= 0.10.2, < 0.11.0"]
+build-backend = "uv_build"
+
+[project.scripts]
+gfx-diff = "kcd_gfx_toolbox.diff:main"
+gfx-extract = "kcd_gfx_toolbox.extract:main"
+gfx-normalize = "kcd_gfx_toolbox.normalize:main"
+
+[tool.uv.build-backend]
+module-name = "kcd_gfx_toolbox"
+
 [tool.ruff]
 line-length = 120

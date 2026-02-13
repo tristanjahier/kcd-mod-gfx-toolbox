@@ -15,10 +15,14 @@ ffdec -format script:pcode -export script output_dir myfile.gfx
 
 ## Usage
 
+> [!IMPORTANT]
+> Since this package is not published yet, you will not be able to install it and use it globally on your system.
+> To run this project right now, you need to clone this repository and use [uv (package and project manager)](https://docs.astral.sh/uv/) to run the commands as documented below.
+
 ### Compare two `.gfx` files (main utility)
 
 ```sh
-python diff.py a/path/to/file1.gfx a/path/to/file2.gfx --ffdec "/the/path/to/ffdec"
+uv run gfx-diff a/path/to/file1.gfx a/path/to/file2.gfx --ffdec "/the/path/to/ffdec"
 ```
 
 This script is intended for comparing two `.gfx` files that are mostly similar, such as a modded file and its vanilla game counterpart. It helps pinpoint the script-level changes introduced by the mod.
@@ -36,7 +40,7 @@ Intermediate files will be written to your system’s temporary directory.
 ### Extract scripts only
 
 ```sh
-python extract.py a/path/to/file.gfx --ffdec "/the/path/to/ffdec"
+uv run gfx-extract a/path/to/file.gfx --ffdec "/the/path/to/ffdec"
 ```
 
 Currently, extraction output is always written to your system’s temporary directory.
@@ -44,7 +48,7 @@ Currently, extraction output is always written to your system’s temporary dire
 ### Normalize a `.pcode` file into blocks
 
 ```sh
-python normalize.py a/path/to/MyScript.pcode a/path/to/output_dir
+uv run gfx-normalize a/path/to/MyScript.pcode a/path/to/output_dir
 ```
 
 One file is written per normalized block at the root of the output directory.

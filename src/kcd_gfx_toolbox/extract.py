@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 import shutil
 import subprocess
-from lib.util import AnsiColor, ensure_empty_dir, get_temp_dir, print_error, sha256_str
+from .lib.util import AnsiColor, ensure_empty_dir, get_temp_dir, print_error, sha256_str
 
 
 def read_arguments():

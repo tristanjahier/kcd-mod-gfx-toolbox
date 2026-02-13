@@ -2,8 +2,8 @@
 
 import argparse
 from pathlib import Path
-from lib.avm1_pcode_normalization import normalize_file
-from lib.util import AnsiColor, print_error
+from .lib.avm1_pcode_normalization import normalize_file
+from .lib.util import AnsiColor, print_error
 
 
 def main() -> int:
