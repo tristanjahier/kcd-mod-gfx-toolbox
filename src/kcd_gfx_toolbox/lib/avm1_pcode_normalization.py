@@ -225,6 +225,13 @@ def extract_label_from_line(line: str) -> tuple[str, str | None]:
     return (line, None)
 
 
+def line_has_label(line: str) -> bool:
+    """
+    Determine if a line has a label.
+    """
+    return LABEL_PREFIX_RE.match(line) is not None
+
+
 def canonicalize_push_lines(lines: list[str]) -> list[str]:
     """
     Canonicalize "Push" lines with multiple operands into single-operand "Push" lines.
@@ -405,6 +412,50 @@ def canonicalize_register_references_in_function_block(lines: list[str]) -> list
     return canonicalized_lines
 
 
+def normalize_not_not_if_patterns(lines: list[str]) -> list[str]:
+    """
+    Normalize another decompilation oddity. `Not Not If ...` can be simplified to just `If ...`.
+    """
+    canonicalized_lines: list[str] = []
+    i = 0
+
+    while i < len(lines):
+        current_line = lines[i]
+        next1_line = lines[i + 1] if i + 1 < len(lines) else None
+        next2_line = lines[i + 2] if i + 2 < len(lines) else None
+        next3_line = lines[i + 3] if i + 3 < len(lines) else None
+
+        # With the following condition we want to match this kind of sequence:
+        #   Equals2
+        #   Not
+        #   Not
+        #   If loc3588
+        # and simplify in:
+        #   Equals2
+        #   If loc3588
+        # `Not` lines cannot have labels for this to apply!
+        if (
+            strip_label(current_line).strip() != "Not"
+            and next1_line is not None
+            and not line_has_label(next1_line)
+            and next1_line.strip() == "Not"
+            and next2_line is not None
+            and not line_has_label(next2_line)
+            and next2_line.strip() == "Not"
+            and next3_line is not None
+            and strip_label(next3_line).strip().startswith("If ")
+        ):
+            canonicalized_lines.append(current_line)
+            canonicalized_lines.append(next3_line)
+            i += 4
+            continue
+
+        canonicalized_lines.append(current_line)
+        i += 1  # Nothing special, go on next line.
+
+    return canonicalized_lines
+
+
 def canonicalize_labels(lines: list[str]) -> list[str]:
     """
     Canonicalize labels by renaming them by order of appearance.
@@ -440,6 +491,7 @@ def normalize_block(lines: list[str]) -> str:
     lines = canonicalize_function_definition_headers(lines)
     lines = canonicalize_register_references_in_function_block(lines)
     lines = canonicalize_labels(lines)
+    lines = normalize_not_not_if_patterns(lines)
 
     return "\n".join(lines) + "\n"
 
