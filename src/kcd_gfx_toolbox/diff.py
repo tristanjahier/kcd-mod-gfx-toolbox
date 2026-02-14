@@ -67,7 +67,9 @@ def main() -> int:
 
     print(f"{AnsiColor.LIGHT_YELLOW}File A:{AnsiColor.RESET} {file_a}")
     print(f"{AnsiColor.LIGHT_YELLOW}File B:{AnsiColor.RESET} {file_b}")
-    print(f"{AnsiColor.LIGHT_YELLOW}Temp dir:{AnsiColor.RESET} \033]8;;{temp_dir.as_uri()}\033\\{temp_dir}\033]8;;\033\\")
+    print(
+        f"{AnsiColor.LIGHT_YELLOW}Temp dir:{AnsiColor.RESET} \033]8;;{temp_dir.as_uri()}\033\\{temp_dir}\033]8;;\033\\"
+    )
     print(f"{AnsiColor.LIGHT_YELLOW}Using ffdec:{AnsiColor.RESET} {ffdec_path}")
 
     console = Console()
