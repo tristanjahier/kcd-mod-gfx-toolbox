@@ -345,6 +345,66 @@ def canonicalize_function_definition_headers(lines: list[str]) -> list[str]:
     return canonicalized_lines
 
 
+def canonicalize_register_references_in_function_block(lines: list[str]) -> list[str]:
+    """
+    Canonicalize register references (`registerN` or `StoreRegister N`) by reindexing them by order of appearance.
+
+    Example:
+        Push register2, "m_Count"
+        GetMember
+        Push register8
+        GetMember
+        Push 0.0
+        StoreRegister 8
+        Pop
+        Push register3, register2
+    =>
+        Push register1, "m_Count"
+        GetMember
+        Push register2
+        GetMember
+        Push 0.0
+        StoreRegister 2
+        Pop
+        Push register3, register1
+    """
+    # Find the function definition header line.
+    define_function_index = next(
+        (i for i, line in enumerate(lines) if DEFINE_FUNCTION_ANY_RE.match(strip_label(line).strip())),
+        None,
+    )
+
+    # If this block is not a function block, we skip this process.
+    if define_function_index is None:
+        return lines
+
+    # Only rewrite within the function body.
+    end = find_function_end_line(lines, define_function_index)
+
+    canonicalized_lines: list[str] = lines.copy()
+    registers_seen: dict[str, int] = {}
+    next_reg_index = 1
+
+    def canonicalize_register_index(reg_idx: str) -> int:
+        nonlocal next_reg_index
+        if reg_idx not in registers_seen:
+            registers_seen[reg_idx] = next_reg_index
+            next_reg_index += 1
+        return registers_seen[reg_idx]
+
+    for i in range(define_function_index + 1, end + 1):
+        line = canonicalized_lines[i]
+
+        if reg_store_match := STORE_REGISTER_RE.search(line):
+            register_num = reg_store_match.group(1)
+            canon_index = canonicalize_register_index(register_num)
+            line = STORE_REGISTER_RE.sub(f"StoreRegister {canon_index}", line, count=1)
+
+        canonicalized_lines[i] = REGISTER_RE.sub(lambda m: f"register{canonicalize_register_index(m.group(1))}", line)
+
+    return canonicalized_lines
+
+
 def canonicalize_labels(lines: list[str]) -> list[str]:
     """
     Canonicalize labels by renaming them by order of appearance.
@@ -378,6 +438,7 @@ def normalize_block(lines: list[str]) -> str:
     lines = canonicalize_push_lines(lines)
     lines = canonicalize_number_literals(lines)
     lines = canonicalize_function_definition_headers(lines)
+    lines = canonicalize_register_references_in_function_block(lines)
     lines = canonicalize_labels(lines)
 
     return "\n".join(lines) + "\n"
