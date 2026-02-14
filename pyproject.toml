@@ -22,3 +22,8 @@ module-name = "kcd_gfx_toolbox"
 
 [tool.ruff]
 line-length = 120
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.1",
+]
