@@ -7,7 +7,7 @@ LABEL_PREFIX_RE = re.compile(r"^\s*(?:loc[0-9a-fA-F]+|L\d+)\s*:\s*(.*)$")
 LABEL_RE = re.compile(r"\b(?:loc[0-9a-fA-F]+|L\d+)\b")
 LABEL_NAME_RE = re.compile(r"^(?:loc[0-9a-fA-F]+|L\d+)$")
 DOT0_RE = re.compile(r"\b(-?\d+)\.0\b")  # 0.0, 1.0, 5.0...
-NEG0_RE = re.compile(r"\b-0\b")  # -0
+NEG0_RE = re.compile(r"(^|[\s,])-0(?=($|[\s,]))")
 
 REGISTER_RE = re.compile(r"\b(?:register|r)(\d+)\b")
 STORE_REGISTER_RE = re.compile(r"\bStoreRegister\s+(?:register|r)?(\d+)\b")
@@ -277,7 +277,7 @@ def canonicalize_number_literals(lines: list[str]) -> list[str]:
 
     for line in lines:
         line = DOT0_RE.sub(r"\1", line)
-        line = NEG0_RE.sub("0", line)
+        line = NEG0_RE.sub(r"\g<1>0", line)
 
         canonicalized_lines.append(line)
 
