@@ -1,0 +1,161 @@
+Push register2
+Push "ApplySort"
+DefineFunction2 "", 0, 4, false, false, true, false, true, false, false, true, false {
+Push 0
+Push "Array"
+NewObject
+StoreRegister 2
+Pop
+Push 0
+Push "Array"
+NewObject
+StoreRegister 3
+Pop
+Push "type"
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "NUMERIC"
+GetMember
+Push 1
+Push register3
+Push "push"
+CallMethod
+Pop
+Push register1
+Push "m_CurrentSort"
+GetMember
+StoreRegister 0
+Push register1
+Push "E_IS_Count"
+GetMember
+StrictEquals
+If loc042a
+Push register0
+Push register1
+Push "E_IS_Weight"
+GetMember
+StrictEquals
+If loc0468
+Push register0
+Push register1
+Push "E_IS_Price"
+GetMember
+StrictEquals
+If loc04a6
+Push register0
+Push register1
+Push "E_IS_Condition"
+GetMember
+StrictEquals
+If loc04e4
+Jump loc0522
+loc042a:Push "count"
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "NUMERIC"
+GetMember
+Push 1
+Push register3
+Push "push"
+CallMethod
+Pop
+Jump loc055b
+loc0468:Push "weight"
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "NUMERIC"
+GetMember
+Push 1
+Push register3
+Push "push"
+CallMethod
+Pop
+Jump loc055b
+loc04a6:Push "price"
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "NUMERIC"
+GetMember
+Push 1
+Push register3
+Push "push"
+CallMethod
+Pop
+Jump loc055b
+loc04e4:Push "condition"
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "NUMERIC"
+GetMember
+Push 1
+Push register3
+Push "push"
+CallMethod
+Pop
+Jump loc055b
+loc0522:Push "hashName"
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "CASEINSENSITIVE"
+GetMember
+Push 1
+Push register3
+Push "push"
+CallMethod
+Pop
+loc055b:Push "id"
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "CASEINSENSITIVE"
+GetMember
+Push 1
+Push register3
+Push "push"
+CallMethod
+Pop
+Push register3
+Push register2
+Push 2
+Push register1
+Push "m_DisplayedData"
+GetMember
+Push "sortOn"
+CallMethod
+Pop
+}
+SetMember

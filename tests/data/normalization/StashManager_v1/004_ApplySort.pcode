@@ -1,0 +1,161 @@
+Push register2
+Push "ApplySort"
+DefineFunction "", 0 {
+Push 0
+Push "Array"
+NewObject
+StoreRegister 1
+Pop
+Push 0
+Push "Array"
+NewObject
+StoreRegister 2
+Pop
+Push "type"
+Push 1
+Push register1
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "NUMERIC"
+GetMember
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+Push register3
+Push "m_CurrentSort"
+GetMember
+StoreRegister 4
+Push register3
+Push "E_IS_Count"
+GetMember
+StrictEquals
+If L0
+Push register4
+Push register3
+Push "E_IS_Weight"
+GetMember
+StrictEquals
+If L1
+Push register4
+Push register3
+Push "E_IS_Price"
+GetMember
+StrictEquals
+If L2
+Push register4
+Push register3
+Push "E_IS_Condition"
+GetMember
+StrictEquals
+If L3
+Jump L4
+L0:Push "count"
+Push 1
+Push register1
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "NUMERIC"
+GetMember
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+Jump L5
+L1:Push "weight"
+Push 1
+Push register1
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "NUMERIC"
+GetMember
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+Jump L5
+L2:Push "price"
+Push 1
+Push register1
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "NUMERIC"
+GetMember
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+Jump L5
+L3:Push "condition"
+Push 1
+Push register1
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "NUMERIC"
+GetMember
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+Jump L5
+L4:Push "hashName"
+Push 1
+Push register1
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "CASEINSENSITIVE"
+GetMember
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+L5:Push "id"
+Push 1
+Push register1
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "CASEINSENSITIVE"
+GetMember
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+Push register2
+Push register1
+Push 2
+Push register3
+Push "m_DisplayedData"
+GetMember
+Push "sortOn"
+CallMethod
+Pop
+}
+SetMember

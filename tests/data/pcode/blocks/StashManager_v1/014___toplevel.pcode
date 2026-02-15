@@ -1,0 +1,71 @@
+Push register2
+Push "m_SelectedCategory"
+Push 0
+SetMember
+Push register2
+Push "m_CurrentSort"
+Push 0
+SetMember
+Push register2
+Push "m_DisplayedData"
+Push 0
+Push "Array"
+NewObject
+SetMember
+Push register2
+Push "m_SlotsObject"
+Push 0
+InitObject
+SetMember
+Push register2
+Push "m_SlotsSize"
+Push 0
+SetMember
+Push register2
+Push "E_IS_Name"
+Push 0
+SetMember
+Push register2
+Push "E_IS_Count"
+Push 1
+SetMember
+Push register2
+Push "E_IS_Weight"
+Push 2
+SetMember
+Push register2
+Push "E_IS_Price"
+Push 3
+SetMember
+Push register2
+Push "E_IS_Condition"
+Push 4
+SetMember
+Push register2
+Push "E_IC_Money"
+Push 6
+SetMember
+Push register2
+Push "UNDEFINED_SLOT"
+Push -1
+SetMember
+Push register2
+Push "E_TEST_MARKER"
+Push 1234
+SetMember
+Push register2
+Push "g_TestLabel"
+Push "between_functions"
+SetMember
+Push 1
+Push null
+Push "_global"
+GetVariable
+Push "StashManager"
+GetMember
+Push "prototype"
+GetMember
+Push 3
+Push "ASSetPropFlags"
+CallFunction
+loc0e3c:Pop

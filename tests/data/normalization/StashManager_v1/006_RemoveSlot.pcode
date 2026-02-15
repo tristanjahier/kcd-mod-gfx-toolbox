@@ -1,0 +1,113 @@
+Push register2
+Push "RemoveSlot"
+DefineFunction "", 3, "slotIndex", "amount", "type" {
+Push register1
+Push undefined
+Equals2
+Not
+If L0
+Push 0
+StoreRegister 1
+Pop
+L0:Push register2
+If L1
+Push register3
+Push "UNDEFINED_SLOT"
+GetMember
+StoreRegister 2
+Pop
+L1:Push register3
+Push "m_SlotsObject"
+GetMember
+Push register4
+GetMember
+StoreRegister 5
+Pop
+Push undefined
+StoreRegister 6
+Pop
+Push register5
+PushDuplicate
+Not
+If L2
+Pop
+Push register2
+Push register3
+Push "UNDEFINED_SLOT"
+GetMember
+Equals2
+PushDuplicate
+If L2
+Pop
+Push 0
+Push register5
+Push "GetType"
+CallMethod
+Push register2
+Equals2
+L2:Not
+If L3
+Push 0
+Push register5
+Push "GetInfo"
+CallMethod
+StoreRegister 6
+Pop
+Push register1
+Push 0
+Greater
+PushDuplicate
+Not
+If L4
+Pop
+Push 0
+Push register6
+Push "GetCount"
+CallMethod
+Push register1
+Greater
+L4:Not
+If L5
+Push register1
+Push 1
+Push register6
+Push "RemoveCount"
+CallMethod
+Pop
+Jump L6
+L5:Push register3
+Push "m_SlotsObject"
+GetMember
+Push register4
+Delete
+Pop
+Push register3
+Push "m_SlotsSize"
+Push register3
+Push "m_SlotsSize"
+GetMember
+Push 1
+Subtract
+SetMember
+Push 0
+Push register6
+Push "GetCategory"
+CallMethod
+Push register3
+Push "E_IC_Money"
+GetMember
+Equals2
+Not
+If L6
+Push register5
+Push 1
+Push register3
+Push "RemoveMoneySlot"
+CallMethod
+Pop
+L6:Push true
+Return
+L3:Push false
+Return
+}
+SetMember

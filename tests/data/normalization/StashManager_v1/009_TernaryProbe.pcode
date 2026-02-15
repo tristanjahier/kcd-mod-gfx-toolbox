@@ -1,0 +1,30 @@
+Push register2
+Push "TernaryProbe"
+DefineFunction "", 3, "v", "t", "f" {
+Push register1
+Not
+If L0
+Push register2
+Jump L1
+L0:Push register3
+L1:StoreRegister 4
+Pop
+Push undefined
+StoreRegister 5
+Pop
+Push register1
+Not
+If L2
+Push register2
+StoreRegister 5
+Pop
+Jump L3
+L2:Push register3
+StoreRegister 5
+Pop
+L3:Push register4
+Push register5
+Equals2
+Return
+}
+SetMember

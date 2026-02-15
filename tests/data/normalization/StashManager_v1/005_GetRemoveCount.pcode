@@ -1,0 +1,205 @@
+Push register2
+Push "GetRemoveCount"
+DefineFunction "", 3, "index", "count", "remove" {
+DefineFunction "computeTake", 2, "remaining", "availableCount" {
+Push register1
+Push register2
+Less2
+If L0
+Push register2
+Jump L1
+L0:Push register1
+L1:Return
+}
+Push 0
+Push "Array"
+NewObject
+StoreRegister 3
+Pop
+Push register1
+Push "m_DisplayedData"
+GetMember
+Push register2
+GetMember
+Push "slots"
+GetMember
+StoreRegister 4
+Pop
+Push 0
+StoreRegister 5
+Pop
+Push undefined
+StoreRegister 6
+Pop
+Push undefined
+StoreRegister 7
+Pop
+Push undefined
+StoreRegister 8
+Pop
+Push undefined
+StoreRegister 9
+Pop
+L2:Push register5
+Push register4
+Push "length"
+GetMember
+Less2
+Not
+If L3
+Push register1
+Push "m_DisplayedData"
+GetMember
+Push register2
+GetMember
+Push "type"
+GetMember
+Push register4
+Push register5
+GetMember
+Push 2
+Push register1
+Push "GetSlot"
+CallMethod
+StoreRegister 6
+Pop
+Push 0
+Push register6
+Push "GetInfo"
+CallMethod
+StoreRegister 7
+Pop
+Push 0
+Push register7
+Push "GetCount"
+CallMethod
+StoreRegister 8
+Pop
+Push register8
+Push register10
+Push 2
+Push "computeTake"
+CallFunction
+StoreRegister 9
+Pop
+Push "count"
+Push register9
+Push "slotId"
+Push 0
+Push register6
+Push "GetIndex"
+CallMethod
+Push "type"
+Push 0
+Push register6
+Push "GetType"
+CallMethod
+Push 3
+InitObject
+Push 1
+Push register3
+Push "push"
+CallMethod
+Pop
+Push register10
+Push register9
+Subtract
+StoreRegister 10
+Pop
+Push register10
+Push 0
+Greater
+If L4
+Jump L3
+L4:Push register5
+Increment
+StoreRegister 5
+Pop
+Jump L2
+L3:Push register11
+Not
+If L5
+Push 0
+StoreRegister 5
+Pop
+L6:Push register5
+Push register3
+Push "length"
+GetMember
+Less2
+Not
+If L5
+Push register3
+Push register5
+GetMember
+Push "type"
+GetMember
+Push register3
+Push register5
+GetMember
+Push "slotId"
+GetMember
+Push 2
+Push register1
+Push "GetSlot"
+CallMethod
+StoreRegister 6
+Pop
+Push 0
+Push register6
+Push "GetInfo"
+CallMethod
+StoreRegister 7
+Pop
+Push 0
+Push register7
+Push "GetCount"
+CallMethod
+StoreRegister 8
+Pop
+Push register3
+Push register5
+GetMember
+Push "count"
+GetMember
+Push register8
+Less2
+Not
+If L7
+Push register3
+Push register5
+GetMember
+Push "count"
+GetMember
+Push 1
+Push register7
+Push "RemoveCount"
+CallMethod
+Pop
+Jump L8
+L7:Push register3
+Push register5
+GetMember
+Push "type"
+GetMember
+Push 0
+Push register3
+Push register5
+GetMember
+Push "slotId"
+GetMember
+Push 3
+Push register1
+Push "RemoveSlot"
+CallMethod
+Pop
+L8:Push register5
+Push 1
+Add2
+StoreRegister 5
+Pop
+Jump L6
+L5:Push register3
+Return
+}
+SetMember

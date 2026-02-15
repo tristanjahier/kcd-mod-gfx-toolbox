@@ -1,0 +1,759 @@
+ConstantPool "_global", "StashManager", "BoundVariantA", "BoundVariantB", "prototype", "BoundVariantC", "ApplySort", "Array", "type", "push", "NUMERIC", "m_CurrentSort", "E_IS_Count", "E_IS_Weight", "E_IS_Price", "E_IS_Condition", "count", "weight", "price", "condition", "hashName", "CASEINSENSITIVE", "id", "m_DisplayedData", "sortOn", "GetRemoveCount", "slots", "length", "GetSlot", "GetInfo", "GetCount", "computeTake", "slotId", "GetIndex", "GetType", "RemoveCount", "RemoveSlot", "UNDEFINED_SLOT", "m_SlotsObject", "m_SlotsSize", "GetCategory", "E_IC_Money", "RemoveMoneySlot", "DecrementProbe", "BooleanFlowProbe", "TernaryProbe", "PushCanonicalizationProbe", "alpha,beta", "He said \"hi\"", "x,y,\"z\"", "Concat3", "|", "m_SelectedCategory", "E_IS_Name", "E_TEST_MARKER", "g_TestLabel", "between_functions", "ASSetPropFlags"
+Push "_global"
+GetVariable
+Push "StashManager"
+GetMember
+Not
+Not
+If loc0e46
+Push "_global"
+GetVariable
+Push "StashManager"
+DefineFunction2 "", 0, 3, false, false, true, false, true, false, false, true, false {
+Push register1
+Push "BoundVariantA"
+DefineFunction2 "", 1, 2, false, false, true, false, true, false, true, false, false, 1, "v" {
+Push register1
+Push 1
+Add2
+Return
+}
+SetMember
+Push register1
+StoreRegister 2
+Pop
+Push register2
+Push "BoundVariantB"
+DefineFunction2 "", 1, 2, false, false, true, false, true, false, true, false, false, 1, "v" {
+Push register1
+Push 1
+Add2
+Return
+}
+SetMember
+Push "StashManager"
+GetVariable
+Push "prototype"
+GetMember
+Push "BoundVariantC"
+DefineFunction2 "", 1, 2, false, false, true, false, true, false, true, false, false, 1, "v" {
+Push register1
+Push 1
+Add2
+Return
+}
+SetMember
+}
+StoreRegister 1
+SetMember
+Push register1
+Push "prototype"
+GetMember
+StoreRegister 2
+Pop
+Push register2
+Push "ApplySort"
+DefineFunction2 "", 0, 4, false, false, true, false, true, false, false, true, false {
+Push 0
+Push "Array"
+NewObject
+StoreRegister 2
+Pop
+Push 0
+Push "Array"
+NewObject
+StoreRegister 3
+Pop
+Push "type"
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "NUMERIC"
+GetMember
+Push 1
+Push register3
+Push "push"
+CallMethod
+Pop
+Push register1
+Push "m_CurrentSort"
+GetMember
+StoreRegister 0
+Push register1
+Push "E_IS_Count"
+GetMember
+StrictEquals
+If loc042a
+Push register0
+Push register1
+Push "E_IS_Weight"
+GetMember
+StrictEquals
+If loc0468
+Push register0
+Push register1
+Push "E_IS_Price"
+GetMember
+StrictEquals
+If loc04a6
+Push register0
+Push register1
+Push "E_IS_Condition"
+GetMember
+StrictEquals
+If loc04e4
+Jump loc0522
+loc042a:Push "count"
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "NUMERIC"
+GetMember
+Push 1
+Push register3
+Push "push"
+CallMethod
+Pop
+Jump loc055b
+loc0468:Push "weight"
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "NUMERIC"
+GetMember
+Push 1
+Push register3
+Push "push"
+CallMethod
+Pop
+Jump loc055b
+loc04a6:Push "price"
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "NUMERIC"
+GetMember
+Push 1
+Push register3
+Push "push"
+CallMethod
+Pop
+Jump loc055b
+loc04e4:Push "condition"
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "NUMERIC"
+GetMember
+Push 1
+Push register3
+Push "push"
+CallMethod
+Pop
+Jump loc055b
+loc0522:Push "hashName"
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "CASEINSENSITIVE"
+GetMember
+Push 1
+Push register3
+Push "push"
+CallMethod
+Pop
+loc055b:Push "id"
+Push 1
+Push register2
+Push "push"
+CallMethod
+Pop
+Push "Array"
+GetVariable
+Push "CASEINSENSITIVE"
+GetMember
+Push 1
+Push register3
+Push "push"
+CallMethod
+Pop
+Push register3
+Push register2
+Push 2
+Push register1
+Push "m_DisplayedData"
+GetMember
+Push "sortOn"
+CallMethod
+Pop
+}
+SetMember
+Push register2
+Push "GetRemoveCount"
+DefineFunction2 "", 3, 12, false, false, true, false, true, false, false, true, false, 2, "index", 3, "count", 4, "remove" {
+DefineFunction2 "computeTake", 2, 3, false, false, true, false, true, false, true, false, false, 1, "remaining", 2, "availableCount" {
+Push register1
+Push register2
+Less2
+Not
+Not
+If loc0631
+Push register2
+Jump loc0636
+loc0631:Push register1
+loc0636:Return
+}
+Push 0
+Push "Array"
+NewObject
+StoreRegister 5
+Pop
+Push register1
+Push "m_DisplayedData"
+GetMember
+Push register2
+GetMember
+Push "slots"
+GetMember
+StoreRegister 6
+Pop
+Push 0
+StoreRegister 7
+Pop
+Push undefined
+StoreRegister 8
+Pop
+Push undefined
+StoreRegister 9
+Pop
+Push undefined
+StoreRegister 10
+Pop
+Push undefined
+StoreRegister 11
+Pop
+loc0697:Push register7
+Push register6
+Push "length"
+GetMember
+Less2
+Not
+If loc07c6
+Push register1
+Push "m_DisplayedData"
+GetMember
+Push register2
+GetMember
+Push "type"
+GetMember
+Push register6
+Push register7
+GetMember
+Push 2
+Push register1
+Push "GetSlot"
+CallMethod
+StoreRegister 8
+Pop
+Push 0
+Push register8
+Push "GetInfo"
+CallMethod
+StoreRegister 9
+Pop
+Push 0
+Push register9
+Push "GetCount"
+CallMethod
+StoreRegister 10
+Pop
+Push register10
+Push register3
+Push 2
+Push "computeTake"
+CallFunction
+StoreRegister 11
+Pop
+Push "count"
+Push register11
+Push "slotId"
+Push 0
+Push register8
+Push "GetIndex"
+CallMethod
+Push "type"
+Push 0
+Push register8
+Push "GetType"
+CallMethod
+Push 3
+InitObject
+Push 1
+Push register5
+Push "push"
+CallMethod
+Pop
+Push register3
+Push register11
+Subtract
+StoreRegister 3
+Pop
+Push register3
+Push 0
+Greater
+Not
+Not
+If loc07b6
+Jump loc07c6
+loc07b6:Push register7
+Increment
+StoreRegister 7
+Pop
+Jump loc0697
+loc07c6:Push register4
+Not
+If loc08fc
+Push 0
+StoreRegister 7
+Pop
+loc07de:Push register7
+Push register5
+Push "length"
+GetMember
+Less2
+Not
+If loc08fc
+Push register5
+Push register7
+GetMember
+Push "type"
+GetMember
+Push register5
+Push register7
+GetMember
+Push "slotId"
+GetMember
+Push 2
+Push register1
+Push "GetSlot"
+CallMethod
+StoreRegister 8
+Pop
+Push 0
+Push register8
+Push "GetInfo"
+CallMethod
+StoreRegister 9
+Pop
+Push 0
+Push register9
+Push "GetCount"
+CallMethod
+StoreRegister 10
+Pop
+Push register5
+Push register7
+GetMember
+Push "count"
+GetMember
+Push register10
+Less2
+Not
+If loc08a6
+Push register5
+Push register7
+GetMember
+Push "count"
+GetMember
+Push 1
+Push register9
+Push "RemoveCount"
+CallMethod
+Pop
+Jump loc08e4
+loc08a6:Push register5
+Push register7
+GetMember
+Push "type"
+GetMember
+Push 0
+Push register5
+Push register7
+GetMember
+Push "slotId"
+GetMember
+Push 3
+Push register1
+Push "RemoveSlot"
+CallMethod
+Pop
+loc08e4:Push register7
+Push 1
+Add2
+StoreRegister 7
+Pop
+Jump loc07de
+loc08fc:Push register5
+Return
+}
+SetMember
+Push register2
+Push "RemoveSlot"
+DefineFunction2 "", 3, 8, false, false, true, false, true, false, false, true, false, 2, "slotIndex", 3, "amount", 4, "type" {
+Push register3
+Push undefined
+Equals2
+Not
+If loc094e
+Push 0
+StoreRegister 3
+Pop
+loc094e:Push register4
+If loc0968
+Push register1
+Push "UNDEFINED_SLOT"
+GetMember
+StoreRegister 4
+Pop
+loc0968:Push register1
+Push "m_SlotsObject"
+GetMember
+Push register2
+GetMember
+StoreRegister 5
+Pop
+Push undefined
+StoreRegister 6
+Pop
+Push 1
+StoreRegister 7
+Pop
+Push register5
+PushDuplicate
+Not
+If loc09d2
+Pop
+Push register4
+Push register1
+Push "UNDEFINED_SLOT"
+GetMember
+Equals2
+PushDuplicate
+If loc09d2
+Pop
+Push 0
+Push register5
+Push "GetType"
+CallMethod
+Push register4
+Equals2
+loc09d2:Not
+If loc0ab5
+Push 0
+Push register5
+Push "GetInfo"
+CallMethod
+StoreRegister 6
+Pop
+Push register3
+Push 0
+Greater
+PushDuplicate
+Not
+If loc0a1f
+Pop
+Push 0
+Push register6
+Push "GetCount"
+CallMethod
+Push register3
+Greater
+loc0a1f:Not
+If loc0a43
+Push register3
+Push 1
+Push register6
+Push "RemoveCount"
+CallMethod
+Pop
+Jump loc0aaf
+loc0a43:Push register1
+Push "m_SlotsObject"
+GetMember
+Push register2
+Delete
+Pop
+Push register1
+Push "m_SlotsSize"
+Push register1
+Push "m_SlotsSize"
+GetMember
+Push register7
+Subtract
+SetMember
+Push 0
+Push register6
+Push "GetCategory"
+CallMethod
+Push register1
+Push "E_IC_Money"
+GetMember
+Equals2
+Not
+If loc0aaf
+Push register5
+Push 1
+Push register1
+Push "RemoveMoneySlot"
+CallMethod
+Pop
+loc0aaf:Push true
+Return
+loc0ab5:Push false
+Return
+}
+SetMember
+Push register2
+Push "DecrementProbe"
+DefineFunction2 "", 1, 4, false, false, true, false, true, false, true, false, false, 1, "value" {
+Push register1
+StoreRegister 2
+Pop
+Push register1
+StoreRegister 3
+Pop
+Push register2
+Decrement
+StoreRegister 2
+Pop
+Push register3
+Push 1
+Subtract
+StoreRegister 3
+Pop
+Push register2
+Push register3
+Equals2
+Return
+}
+SetMember
+Push register2
+Push "BooleanFlowProbe"
+DefineFunction2 "", 2, 5, false, false, true, false, true, false, true, false, false, 1, "x", 2, "y" {
+Push undefined
+StoreRegister 3
+Pop
+Push undefined
+StoreRegister 4
+Pop
+Push register1
+Push register2
+Less2
+If loc0b63
+Push true
+StoreRegister 3
+Pop
+Jump loc0b6d
+loc0b63:Push false
+StoreRegister 3
+Pop
+loc0b6d:Push register1
+Push register2
+Less2
+Not
+Not
+If loc0b8e
+Push true
+StoreRegister 4
+Pop
+Jump loc0b98
+loc0b8e:Push false
+StoreRegister 4
+Pop
+loc0b98:Push register3
+Push register4
+Equals2
+Return
+}
+SetMember
+Push register2
+Push "TernaryProbe"
+DefineFunction2 "", 3, 6, false, false, true, false, true, false, true, false, false, 1, "v", 2, "t", 3, "f" {
+Push register1
+Not
+If loc0bd8
+Push register2
+Jump loc0bdd
+loc0bd8:Push register3
+loc0bdd:StoreRegister 4
+Pop
+Push undefined
+StoreRegister 5
+Pop
+Push register1
+Not
+If loc0c05
+Push register2
+StoreRegister 5
+Pop
+Jump loc0c0f
+loc0c05:Push register3
+StoreRegister 5
+Pop
+loc0c0f:Push register4
+Push register5
+Equals2
+Return
+}
+SetMember
+Push register2
+Push "PushCanonicalizationProbe"
+DefineFunction2 "", 0, 6, false, false, true, false, true, false, false, true, false {
+Push "alpha,beta"
+StoreRegister 2
+Pop
+Push "He said \"hi\""
+StoreRegister 3
+Pop
+Push "x,y,\"z\""
+StoreRegister 4
+Pop
+Push register4
+Push register3
+Push register2
+Push 3
+Push register1
+Push "Concat3"
+CallMethod
+StoreRegister 5
+Pop
+Push register5
+Return
+}
+SetMember
+Push register2
+Push "Concat3"
+DefineFunction2 "", 3, 4, false, false, true, false, true, false, true, false, false, 1, "a", 2, "b", 3, "c" {
+Push register1
+Push "|"
+Add2
+Push register2
+Add2
+Push "|"
+Add2
+Push register3
+Add2
+Return
+}
+SetMember
+Push register2
+Push "GetSlot"
+DefineFunction2 "", 2, 4, false, false, true, false, true, false, false, true, false, 2, "slotId", 3, "type" {
+Push register1
+Push "m_SlotsObject"
+GetMember
+Push register2
+GetMember
+Return
+}
+SetMember
+Push register2
+Push "RemoveMoneySlot"
+DefineFunction2 "", 1, 0, false, false, true, false, true, false, true, false, false, 1, "slot" {
+}
+SetMember
+Push register2
+Push "m_SelectedCategory"
+Push 0
+SetMember
+Push register2
+Push "m_CurrentSort"
+Push 4
+SetMember
+Push register2
+Push "m_DisplayedData"
+Push 0
+Push "Array"
+NewObject
+SetMember
+Push register2
+Push "m_SlotsObject"
+Push 0
+InitObject
+SetMember
+Push register2
+Push "m_SlotsSize"
+Push 0
+SetMember
+Push register2
+Push "E_IS_Name"
+Push 0
+SetMember
+Push register2
+Push "E_IS_Count"
+Push 1
+SetMember
+Push register2
+Push "E_IS_Weight"
+Push 2
+SetMember
+Push register2
+Push "E_IS_Price"
+Push 3
+SetMember
+Push register2
+Push "E_IS_Condition"
+Push 4
+SetMember
+Push register2
+Push "E_IC_Money"
+Push 6
+SetMember
+Push register2
+Push "UNDEFINED_SLOT"
+Push -1
+SetMember
+Push register2
+Push "E_TEST_MARKER"
+Push 1234
+SetMember
+Push register2
+Push "g_TestLabel"
+Push "between_functions"
+SetMember
+Push 1
+Push null
+Push "_global"
+GetVariable
+Push "StashManager"
+GetMember
+Push "prototype"
+GetMember
+Push 3
+Push "ASSetPropFlags"
+CallFunction
+loc0e46:Pop

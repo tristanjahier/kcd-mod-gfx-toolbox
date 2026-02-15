@@ -1,0 +1,11 @@
+Push register2
+Push "GetSlot"
+DefineFunction2 "", 2, 4, false, false, true, false, true, false, false, true, false, 2, "slotId", 3, "type" {
+Push register1
+Push "m_SlotsObject"
+GetMember
+Push register2
+GetMember
+Return
+}
+SetMember

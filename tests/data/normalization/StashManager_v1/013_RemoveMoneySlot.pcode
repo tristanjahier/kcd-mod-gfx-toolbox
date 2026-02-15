@@ -1,0 +1,5 @@
+Push register2
+Push "RemoveMoneySlot"
+DefineFunction "", 1, "slot" {
+}
+SetMember

@@ -1,0 +1,35 @@
+DefineFunction "", 0 {
+Push register1
+Push "BoundVariantA"
+DefineFunction "", 1, "v" {
+Push register1
+Push 1
+Add2
+Return
+}
+SetMember
+Push register1
+StoreRegister 2
+Pop
+Push register2
+Push "BoundVariantB"
+DefineFunction "", 1, "v" {
+Push register1
+Push 1
+Add2
+Return
+}
+SetMember
+Push "StashManager"
+GetVariable
+Push "prototype"
+GetMember
+Push "BoundVariantC"
+DefineFunction "", 1, "v" {
+Push register1
+Push 1
+Add2
+Return
+}
+SetMember
+}

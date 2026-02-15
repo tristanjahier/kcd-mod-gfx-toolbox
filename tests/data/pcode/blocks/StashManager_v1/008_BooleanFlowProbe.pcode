@@ -1,0 +1,39 @@
+Push register2
+Push "BooleanFlowProbe"
+DefineFunction2 "", 2, 5, false, false, true, false, true, false, true, false, false, 1, "x", 2, "y" {
+Push undefined
+StoreRegister 3
+Pop
+Push undefined
+StoreRegister 4
+Pop
+Push register1
+Push register2
+Less2
+If loc0b59
+Push true
+StoreRegister 3
+Pop
+Jump loc0b63
+loc0b59:Push false
+StoreRegister 3
+Pop
+loc0b63:Push register1
+Push register2
+Less2
+Not
+Not
+If loc0b84
+Push true
+StoreRegister 4
+Pop
+Jump loc0b8e
+loc0b84:Push false
+StoreRegister 4
+Pop
+loc0b8e:Push register3
+Push register4
+Equals2
+Return
+}
+SetMember

@@ -1,0 +1,11 @@
+ConstantPool "_global", "StashManager", "BoundVariantA", "BoundVariantB", "prototype", "BoundVariantC", "ApplySort", "Array", "type", "push", "NUMERIC", "m_CurrentSort", "E_IS_Count", "E_IS_Weight", "E_IS_Price", "E_IS_Condition", "count", "weight", "price", "condition", "hashName", "CASEINSENSITIVE", "id", "m_DisplayedData", "sortOn", "GetRemoveCount", "slots", "length", "GetSlot", "GetInfo", "GetCount", "computeTake", "slotId", "GetIndex", "GetType", "RemoveCount", "RemoveSlot", "UNDEFINED_SLOT", "m_SlotsObject", "m_SlotsSize", "GetCategory", "E_IC_Money", "RemoveMoneySlot", "DecrementProbe", "BooleanFlowProbe", "TernaryProbe", "PushCanonicalizationProbe", "alpha,beta", "He said \"hi\"", "x,y,\"z\"", "Concat3", "|", "m_SelectedCategory", "E_IS_Name", "E_TEST_MARKER", "g_TestLabel", "between_functions", "ASSetPropFlags"
+Push "_global"
+GetVariable
+Push "StashManager"
+GetMember
+Not
+Not
+If loc0e3c
+Push "_global"
+GetVariable
+Push "StashManager"

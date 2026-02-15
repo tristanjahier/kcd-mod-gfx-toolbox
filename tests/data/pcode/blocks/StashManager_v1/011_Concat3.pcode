@@ -1,0 +1,15 @@
+Push register2
+Push "Concat3"
+DefineFunction2 "", 3, 4, false, false, true, false, true, false, true, false, false, 1, "a", 2, "b", 3, "c" {
+Push register1
+Push "|"
+Add2
+Push register2
+Add2
+Push "|"
+Add2
+Push register3
+Add2
+Return
+}
+SetMember

@@ -1,0 +1,25 @@
+Push register2
+Push "PushCanonicalizationProbe"
+DefineFunction "", 0 {
+Push "alpha,beta"
+StoreRegister 1
+Pop
+Push "He said \"hi\""
+StoreRegister 2
+Pop
+Push "x,y,\"z\""
+StoreRegister 3
+Pop
+Push register3
+Push register2
+Push register1
+Push 3
+Push register4
+Push "Concat3"
+CallMethod
+StoreRegister 5
+Pop
+Push register5
+Return
+}
+SetMember

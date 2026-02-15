@@ -1,0 +1,7 @@
+StoreRegister 1
+SetMember
+Push register1
+Push "prototype"
+GetMember
+StoreRegister 2
+Pop

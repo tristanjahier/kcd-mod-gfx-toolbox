@@ -1,0 +1,24 @@
+Push register2
+Push "DecrementProbe"
+DefineFunction "", 1, "value" {
+Push register1
+StoreRegister 2
+Pop
+Push register1
+StoreRegister 3
+Pop
+Push register2
+Decrement
+StoreRegister 2
+Pop
+Push register3
+Push 1
+Subtract
+StoreRegister 3
+Pop
+Push register2
+Push register3
+Equals2
+Return
+}
+SetMember
