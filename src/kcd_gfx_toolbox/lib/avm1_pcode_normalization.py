@@ -17,10 +17,6 @@ PUSH_OBJ_RE = re.compile(r"^\s*Push\s+(?:register\d+|r\d+)\s*$")
 PUSH_NAME_RE = re.compile(r'^\s*Push\s+"([^"]+)"\s*$')
 
 DEFINE_FUNCTION_ANY_RE = re.compile(r"^\s*DefineFunction(?:2)?\b")
-DEFINE_FUNCTION2_RE = re.compile(r"^\s*DefineFunction2\b")
-DEFINE_FUNCTION2_REGCOUNT_RE = re.compile(
-    r'^(?P<head>\s*DefineFunction2\s+"[^"]*"\s*,\s*\d+\s*,\s*)\d+(?P<tail>\s*,.*)$'
-)
 DEFINE_FUNCTION_HEADER_RE = re.compile(r'^\s*DefineFunction(?:2)?\s*"([^"]*)"\s*,\s*(\d+)')
 
 
@@ -284,70 +280,40 @@ def canonicalize_number_literals(lines: list[str]) -> list[str]:
     return canonicalized_lines
 
 
-def neutralize_definefunction2_register_operands(line: str) -> str:
-    """
-    Replace `DefineFunction2` register-related numeric operands with `N`.
-    Example: `DefineFunction2 "<name>", <argc>, <register count>, ..., <reg>, "<arg>"`
-    """
-    # Put aside the label if present.
-    labelless_line, label = extract_label_from_line(line)
-
-    if not (match := DEFINE_FUNCTION2_REGCOUNT_RE.match(labelless_line)):
-        return line
-
-    # Put back the label if it was present.
-    label_prefix = label + ":" if label else ""
-
-    line = f"{label_prefix}{match.group('head')}N{match.group('tail')}"
-
-    return re.sub(r',\s*\d+\s*,\s*"([^"]+)"', r', N, "\1"', line)
-
-
-def canonicalize_definefunction_header_line(line: str) -> str:
-    """
-    Canonicalize DefineFunction/DefineFunction2 headers to one normalized form:
-    Example: `DefineFunction "<name>", <argc>, "<arg1>", ... {`
-    """
-    # Put aside the label if present.
-    labelless_line, label = extract_label_from_line(line)
-
-    if not DEFINE_FUNCTION_ANY_RE.match(labelless_line):
-        return line
-
-    if not (match := DEFINE_FUNCTION_HEADER_RE.match(labelless_line)):
-        return line
-
-    func_name = match.group(1)
-    argc = int(match.group(2))
-    quoted_operands = re.findall(r'"([^"]*)"', labelless_line)
-    arg_names = quoted_operands[1 : 1 + argc]
-
-    normalized_line = f'DefineFunction "{func_name}", {argc}'
-    for arg in arg_names:
-        normalized_line += f', "{arg}"'
-    normalized_line += " {"
-
-    # Put back the label if it was present.
-    label_prefix = label + ":" if label else ""
-
-    return f"{label_prefix}{normalized_line}"
-
-
 def canonicalize_function_definition_headers(lines: list[str]) -> list[str]:
     """
     Canonicalize function definition header lines.
-    Example: `DefineFunction "<name>", <argc>, "<arg1>", ... {`
+    Example:
+        `DefineFunction2 "<name>", 2, 12, ..., 2, "<arg1>", 3, "<arg2>" {`
+    =>
+        `DefineFunction "<name>", 2, "<arg1>", "<arg2>" {`
     """
     canonicalized_lines: list[str] = []
 
     for line in lines:
-        if DEFINE_FUNCTION2_RE.match(strip_label(line)):
-            line = neutralize_definefunction2_register_operands(line)
+        # Put aside the label if present.
+        labelless_line, label = extract_label_from_line(line)
 
-        if DEFINE_FUNCTION_ANY_RE.match(strip_label(line)):
-            line = canonicalize_definefunction_header_line(line)
+        if not DEFINE_FUNCTION_ANY_RE.match(labelless_line) or not (
+            match := DEFINE_FUNCTION_HEADER_RE.match(labelless_line)
+        ):
+            canonicalized_lines.append(line)
+            continue
 
-        canonicalized_lines.append(line)
+        func_name = match.group(1)
+        argc = int(match.group(2))
+        quoted_operands = re.findall(r'"([^"]*)"', labelless_line)
+        arg_names = quoted_operands[1 : 1 + argc]
+
+        normalized_line = f'DefineFunction "{func_name}", {argc}'
+        for arg in arg_names:
+            normalized_line += f', "{arg}"'
+        normalized_line += " {"
+
+        # Put back the label if it was present.
+        label_prefix = label + ":" if label else ""
+
+        canonicalized_lines.append(f"{label_prefix}{normalized_line}")
 
     return canonicalized_lines
 

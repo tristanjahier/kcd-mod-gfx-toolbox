@@ -1,5 +1,5 @@
 from kcd_gfx_toolbox.lib import avm1_pcode_normalization
-from .helpers import sample_text, sample_text_lines, list_data_files, read_data_file, get_test_data_dir
+from .helpers import sample_text_lines, list_data_files, read_data_file, get_test_data_dir
 import re
 from collections import Counter
 
@@ -225,62 +225,12 @@ def test_canonicalize_number_literals():
     """)
 
 
-def test_neutralize_definefunction2_register_operands():
-    pcode_sample = sample_text("""
-        DefineFunction2 "", 3, 12, false, false, true, false, true, false, false, true, false, 2, "index", 3, "count", 4, "remove"  {
-    """)
-
-    canonicalized = avm1_pcode_normalization.neutralize_definefunction2_register_operands(pcode_sample)
-
-    assert canonicalized == sample_text("""
-        DefineFunction2 "", 3, N, false, false, true, false, true, false, false, true, false, N, "index", N, "count", N, "remove"  {
-    """)
-
-
-def test_canonicalize_definefunction_header_line_1():
-    pcode_sample = sample_text("""
-        DefineFunction2 "", 3, 12, false, false, true, false, true, false, false, true, false, 2, "index", 3, "count", 4, "remove"  {
-    """)
-
-    canonicalized = avm1_pcode_normalization.canonicalize_definefunction_header_line(pcode_sample)
-
-    assert canonicalized == sample_text("""
-        DefineFunction "", 3, "index", "count", "remove" {
-    """)
-
-
-def test_canonicalize_definefunction_header_line_2():
-    pcode_sample = sample_text("""
-        loc370b:DefineFunction2 "", 3, 12, false, false, true, false, true, false, false, true, false, 2, "index", 3, "count", 4, "remove"  {
-    """)
-
-    canonicalized = avm1_pcode_normalization.canonicalize_definefunction_header_line(pcode_sample)
-
-    # Test that label is preserved if present.
-    assert canonicalized == sample_text("""
-        loc370b:DefineFunction "", 3, "index", "count", "remove" {
-    """)
-
-
-def test_canonicalize_definefunction_header_line_3():
-    pcode_sample = sample_text("""
-        DefineFunction "", 4, "type" , "code" , "scope" , "callBack"  {
-    """)
-
-    canonicalized = avm1_pcode_normalization.canonicalize_definefunction_header_line(pcode_sample)
-
-    # Test that a `DefineFunction` (not 2) header is reconstructed without change, except for whitespace.
-    assert canonicalized == sample_text("""
-        DefineFunction "", 4, "type", "code", "scope", "callBack" {
-    """)
-
-
 def test_canonicalize_function_definition_headers():
     pcode_sample = sample_text_lines("""
         Push register2
         Push "GetRemoveCount"
-        DefineFunction2 "", 3, 12, false, false, true, false, true, false, false, true, false, 2, "index", 3, "count", 4, "remove" {
-        loc999754:DefineFunction2 "computeTake", 2, 3, false, false, true, false, true, false, true, false, false, 1, "remaining", 2, "availableCount" {
+        DefineFunction2 "", 3, 12, false, false, true , false , true , false , false, true, false, 2, "index", 3, "count", 4, "remove"  {
+        loc999754:DefineFunction2 "computeTake", 2, 3, false, false, true, false, true, false, true, false, false, 1, "remaining", 2, "availableCount"  {
         Push register1
         Push register2
         Less2
