@@ -424,10 +424,8 @@ def test_canonicalize_labels():
         Push 0
         StoreRegister 7
         Pop
-        loc07df:Push register7
-        Push register5
-        Push "length"
-        GetMember
+        loc07df:Push register7, loc07c7 , "locoloco! loc07c7dsf.", "title"
+        SetMember
     """)
 
     canonicalized = avm1_pcode_normalization.canonicalize_labels(pcode_sample)
@@ -446,10 +444,69 @@ def test_canonicalize_labels():
         Push 0
         StoreRegister 7
         Pop
-        L4:Push register7
-        Push register5
-        Push "length"
+        L4:Push register7, L1 , "locoloco! loc07c7dsf.", "title"
+        SetMember
+    """)
+
+
+def test_canonicalize_labels_free_form_labels():
+    pcode_sample = sample_text_lines("""
+        StrictEquals
+        If labelous
+        my_label: Push register0
+        Push register1
+        Push "E_IS_Condition"
         GetMember
+        StrictEquals
+        If L099
+        Jump my_label
+        end:Push "count"
+    """)
+
+    canonicalized = avm1_pcode_normalization.canonicalize_labels(pcode_sample)
+
+    assert canonicalized == sample_text_lines("""
+        StrictEquals
+        If L0
+        L1: Push register0
+        Push register1
+        Push "E_IS_Condition"
+        GetMember
+        StrictEquals
+        If L2
+        Jump L1
+        L3:Push "count"
+    """)
+
+
+def test_canonicalize_labels_idempotency():
+    # An already canonical input should not change when re-canonicalized.
+    pcode_sample = sample_text_lines("""
+        StrictEquals
+        If L0
+        L1: Push register0
+        Push register1
+        Push "E_IS_Condition"
+        GetMember
+        StrictEquals
+        If L2
+        Jump L1
+        L3:Push "count"
+    """)
+
+    canonicalized = avm1_pcode_normalization.canonicalize_labels(pcode_sample)
+
+    assert canonicalized == sample_text_lines("""
+        StrictEquals
+        If L0
+        L1: Push register0
+        Push register1
+        Push "E_IS_Condition"
+        GetMember
+        StrictEquals
+        If L2
+        Jump L1
+        L3:Push "count"
     """)
 
 
@@ -469,4 +526,6 @@ def test_normalize_block():
         assert fixture_file is not None, f"Missing fixture: tests/data/normalization/StashManager_v1/{block_file_name}"
 
         fixture_normalized_block = fixture_file.read_text(encoding="utf-8").strip()
-        assert test_normalized_block == fixture_normalized_block
+        assert test_normalized_block == fixture_normalized_block, (
+            f"Block {block_file_name} does not match with its normalized fixture."
+        )

@@ -3,9 +3,10 @@ import re
 from dataclasses import dataclass
 from .util import safe_filename
 
-LABEL_PREFIX_RE = re.compile(r"^\s*(?:loc[0-9a-fA-F]+|L\d+)\s*:\s*(.*)$")
-LABEL_RE = re.compile(r"\b(?:loc[0-9a-fA-F]+|L\d+)\b")
-LABEL_NAME_RE = re.compile(r"^(?:loc[0-9a-fA-F]+|L\d+)$")
+WORD_TOKEN = r"[a-zA-Z_][a-zA-Z\d_]*"
+LABEL_PREFIXED_LINE_RE = re.compile(rf"^\s*(?P<prefix>(?P<label>{WORD_TOKEN})\s*:)\s*(?P<rest>.*)$")
+LABEL_REFERENCED_LINE_RE = re.compile(rf"^(?P<opcode>If|Jump)\s+(?P<label>{WORD_TOKEN})$", flags=re.IGNORECASE)
+
 DOT0_RE = re.compile(r"\b(-?\d+)\.0\b")  # 0.0, 1.0, 5.0...
 NEG0_RE = re.compile(r"(^|[\s,])-0(?=($|[\s,]))")
 
@@ -24,8 +25,8 @@ def strip_label(line: str) -> str:
     """
     Remove the leading label if present (like `loc044b:` or `L12:`).
     """
-    match = LABEL_PREFIX_RE.match(line)
-    return match.group(1) if match else line
+    match = LABEL_PREFIXED_LINE_RE.match(line)
+    return match.group("rest") if match else line
 
 
 def find_function_name_and_start_line(
@@ -236,11 +237,8 @@ def extract_label_from_line(line: str) -> tuple[str, str | None]:
     """
     Extract the label of a p-code line if any. Return the rest of the line and the label.
     """
-    if ":" in line:
-        label, rest = line.split(":", 1)
-        label = label.strip()
-        if LABEL_NAME_RE.fullmatch(label):
-            return (rest.lstrip(), label)
+    if match := LABEL_PREFIXED_LINE_RE.match(line):
+        return (match.group("rest"), match.group("label"))
 
     return (line, None)
 
@@ -249,7 +247,7 @@ def line_has_label(line: str) -> bool:
     """
     Determine if a line has a label.
     """
-    return LABEL_PREFIX_RE.match(line) is not None
+    return LABEL_PREFIXED_LINE_RE.match(line) is not None
 
 
 def canonicalize_push_lines(lines: list[str]) -> list[str]:
@@ -462,10 +460,33 @@ def canonicalize_labels(lines: list[str]) -> list[str]:
             label_next_idx += 1
         return label_map[key]
 
+    word_token_re = re.compile(WORD_TOKEN)
+
     canonicalized_lines: list[str] = []
 
     for line in lines:
-        line = LABEL_RE.sub(lambda m: map_label(m.group(0)), line)
+        # First, we read the line to find labels.
+        labelless_line, label_prefix = extract_label_from_line(line)
+
+        if label_prefix is not None:
+            # If the line has a label prefix.
+            map_label(label_prefix)
+
+        if match := LABEL_REFERENCED_LINE_RE.match(labelless_line.strip()):
+            # If we match exactly `If <label>` or `Jump <label>`.
+            map_label(match.group("label"))
+
+        # After label discovery and remapping: modify the line.
+        # Working on tokens allows replacing only what is needed, without touching the whitespaces.
+        # Important: proceed from the end of the line toward the start.
+        # This prevents position shifting when performing multiple substitutions per line.
+        word_tokens = [tok for tok in tokenize_line(line) if word_token_re.fullmatch(tok[1])]
+        word_tokens.sort(key=lambda t: t[0], reverse=True)
+
+        for pos, tok in word_tokens:
+            if tok.lower() in label_map:
+                line = line[:pos] + map_label(tok) + line[pos + len(tok) :]
+
         canonicalized_lines.append(line)
 
     return canonicalized_lines
