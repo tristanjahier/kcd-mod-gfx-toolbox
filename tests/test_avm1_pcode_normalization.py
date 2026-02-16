@@ -136,6 +136,35 @@ def test_split_into_blocks():
         raise RuntimeError(f"Cannot find data fixture for {block_name} in pcode/blocks/StashManager_v1.")
 
 
+def test_tokenize_line():
+    # DO NOT FORGET that \\ will only render 1 character in the resulting string!
+
+    pcode_sample = ' label56:Push register1,, N "cagada, \\" ah:ah",    0.0, 6 {}  '
+    tokens = avm1_pcode_normalization.tokenize_line(pcode_sample)
+
+    assert tokens == [
+        (1, "label56"),
+        (8, ":"),
+        (9, "Push"),
+        (14, "register1"),
+        (23, ","),
+        (24, ","),
+        (26, "N"),
+        (28, '"cagada, \\" ah:ah"'),
+        (46, ","),
+        (51, "0.0"),
+        (54, ","),
+        (56, "6"),
+        (58, "{"),
+        (59, "}"),
+    ]
+
+
+def test_tokenize_line_with_non_quoted_backslash():
+    tokens = avm1_pcode_normalization.tokenize_line("A B\\, 1312")
+    assert tokens == [(0, "A"), (2, "B\\"), (4, ","), (6, "1312")]
+
+
 def test_split_comma_separated_operands():
     test1 = avm1_pcode_normalization.split_comma_separated_operands('register8, "GetType"')
     assert test1 == ["register8", '"GetType"']

@@ -163,6 +163,59 @@ def split_into_blocks(pcode_text: str) -> list[tuple[str, list[str]]]:
     return blocks
 
 
+def tokenize_line(line: str) -> list[tuple[int, str]]:
+    """
+    Split a line in a sequence of tokens.
+
+    Backslash escaping is honored while scanning quoted text.
+    Whitespace is ignored.
+
+    Example:
+        `label56:Push register1, "cagada, ahah", 0.0, 6 {`
+    =>
+        label56 | : | Push | register1 | , | "cagada, ahah" | 0.0 | 6 | {
+    """
+    tokens: list[tuple[int, str]] = []
+    separators = [":", ",", "{", "}"]
+    buffer = []  # characters encountered before a token separator
+    buffer_start = 0
+    quoting = False
+    escaping = False
+
+    for pos, char in enumerate(line):
+        if escaping:
+            buffer.append(char)
+            escaping = False
+            continue
+        if char == "\\" and quoting:
+            buffer.append(char)
+            escaping = True
+            continue
+        if char == '"':
+            buffer.append(char)
+            quoting = not quoting
+            continue
+        if (char.isspace() or char in separators) and not quoting:
+            # We are not inside a string, and we met a token separator (or a whitespace).
+            token = "".join(buffer)
+            if token:
+                tokens.append((buffer_start, token))
+
+            if char in separators:
+                tokens.append((pos, char))
+
+            buffer = []  # we just met a separator, so we reset the buffer
+            buffer_start = pos + 1
+            continue
+
+        buffer.append(char)
+
+    if token := "".join(buffer):
+        tokens.append((buffer_start, token))
+
+    return tokens
+
+
 def split_comma_separated_operands(s: str) -> list[str]:
     """
     Split a comma-separated operand line while ignoring commas inside quotes.
@@ -176,36 +229,7 @@ def split_comma_separated_operands(s: str) -> list[str]:
         r0
         "cagada, ahah"
     """
-    operands = []
-    buffer = []  # characters encountered before a comma
-    quoting = False
-    escaping = False
-
-    for char in s:
-        if escaping:
-            buffer.append(char)
-            escaping = False
-            continue
-        if char == "\\":
-            buffer.append(char)
-            escaping = True
-            continue
-        if char == '"':
-            buffer.append(char)
-            quoting = not quoting
-            continue
-        if char == "," and not quoting:
-            op = "".join(buffer).strip()
-            if op:
-                operands.append(op)
-            buffer = []  # we just met a comma, so we reset the buffer
-            continue
-        buffer.append(char)
-
-    if op := "".join(buffer).strip():
-        operands.append(op)
-
-    return operands
+    return [tok for _, tok in tokenize_line(s) if tok != ","]
 
 
 def extract_label_from_line(line: str) -> tuple[str, str | None]:
