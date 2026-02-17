@@ -12,15 +12,16 @@ class FileChange:
 
     path: Path
     changed: int
+    path_new: Path | None = None
 
 
 def diff_file_trees_basic(dir1: Path, dir2: Path) -> tuple[list[Path], list[Path], list[Path]]:
     """
     Perform a basic diff between two directories and their subtrees.
     Return a tuple of:
-        1. file paths only present in directory 1
-        2. file paths only present in directory 2
-        3. file paths in common but with different contents
+        1. file paths in common but with different contents
+        2. file paths only present in directory 1
+        3. file paths only present in directory 2
     """
     dir1_files = list_tree_files(dir1)
     dir2_files = list_tree_files(dir2)
@@ -44,7 +45,7 @@ def diff_file_trees_basic(dir1: Path, dir2: Path) -> tuple[list[Path], list[Path
         if sha256_file(file1) != sha256_file(file2):
             different.append(rel_path)
 
-    return only_in_dir1, only_in_dir2, different
+    return different, only_in_dir1, only_in_dir2
 
 
 def diff_texts(text1_lines: list[str], text2_lines: list[str]) -> int:
@@ -79,13 +80,13 @@ def diff_file_trees(
     dir1: Path,
     dir2: Path,
     include_paths: list[Path] | None = None,
-) -> tuple[list[Path], list[Path], list[FileChange]]:
+) -> tuple[list[FileChange], list[Path], list[Path]]:
     """
     Perform a diff between two directories and their subtrees.
     Return a tuple of:
-        1. file paths only present in directory 1
-        2. file paths only present in directory 2
-        3. file change stats for common file paths
+        1. file change stats for common file paths and paired moved/renamed paths
+        2. file paths only present in directory 1
+        3. file paths only present in directory 2
     """
     dir1_files = list_tree_files(dir1)
     dir2_files = list_tree_files(dir2)
@@ -98,8 +99,6 @@ def diff_file_trees(
         dir1_files = {p for p in dir1_files if keep_path(p)}
         dir2_files = {p for p in dir2_files if keep_path(p)}
 
-    only_in_dir1 = sorted(dir1_files - dir2_files)
-    only_in_dir2 = sorted(dir2_files - dir1_files)
     common = sorted(dir1_files & dir2_files)
 
     changes: list[FileChange] = []
@@ -119,4 +118,94 @@ def diff_file_trees(
         if changed > 0:
             changes.append(FileChange(path=rel_path, changed=changed))
 
-    return only_in_dir1, only_in_dir2, changes
+    # Now we need to take care of unmatched paths on both sides.
+    # The most common case is that a path has been renamed, but the file is the same.
+    unmatched_dir1 = set(dir1_files - dir2_files)
+    unmatched_dir2 = set(dir2_files - dir1_files)
+
+    # Identify and match pure renames by files hashes.
+    unmatched_dir1_hashes: dict[Path, str] = {}
+    unmatched_dir2_hashes: dict[Path, str] = {}
+
+    for rel_path in unmatched_dir1:
+        unmatched_dir1_hashes[rel_path] = sha256_file(dir1 / rel_path)
+
+    for rel_path in unmatched_dir2:
+        unmatched_dir2_hashes[rel_path] = sha256_file(dir2 / rel_path)
+
+    common_hashes = set(unmatched_dir1_hashes.values()) & set(unmatched_dir2_hashes.values())
+
+    for file_hash in common_hashes:
+        paths_in_dir1 = [p for p, h in unmatched_dir1_hashes.items() if h == file_hash]
+        paths_in_dir2 = [p for p, h in unmatched_dir2_hashes.items() if h == file_hash]
+
+        # Note: the following pairing logic is "non-existent". We simply discard the same
+        # number of identical files (by hash) on each side.
+        # It would probably be better for reporting to pair the "closest" paths.
+        paired_count = min(len(paths_in_dir1), len(paths_in_dir2))
+
+        for p in paths_in_dir1[:paired_count]:
+            unmatched_dir1.discard(p)
+
+        for p in paths_in_dir2[:paired_count]:
+            unmatched_dir2.discard(p)
+
+    # Finally, try to pair files with different paths and whose contents are
+    # not identical but highly similar and therefore comparable (worth a diff).
+
+    # Caches for file contents.
+    file_cache: dict[Path, list[str]] = {}
+
+    def read_file_from_dir1(rel_path: Path) -> list[str]:
+        full_path = dir1 / rel_path
+        if full_path not in file_cache:
+            file_cache[full_path] = read_file_lines(full_path)
+        return file_cache[full_path]
+
+    def read_file_from_dir2(rel_path: Path) -> list[str]:
+        full_path = dir2 / rel_path
+        if full_path not in file_cache:
+            file_cache[full_path] = read_file_lines(full_path)
+        return file_cache[full_path]
+
+    MATCH_SIMILARITY_THRESHOLD = 0.9
+
+    for path_in_dir1 in sorted(unmatched_dir1):
+        if not unmatched_dir2:  # if there is no unmatched file left in dir 2
+            break
+
+        # Rank candidates by path similarity first to reduce expensive content comparisons.
+        # Keep only the N top candidates (value could be adjusted).
+        candidates = sorted(unmatched_dir2, key=lambda p: p.name)
+
+        candidates = sorted(
+            candidates,
+            key=lambda p: difflib.SequenceMatcher(a=str(path_in_dir1), b=str(p), autojunk=False).ratio(),
+            reverse=True,
+        )[:20]
+
+        file1_lines = read_file_from_dir1(path_in_dir1)
+        best_match: tuple[float, Path] | None = None
+
+        for candidate in candidates:
+            similarity = difflib.SequenceMatcher(
+                a=file1_lines, b=read_file_from_dir2(candidate), autojunk=False
+            ).ratio()
+
+            if best_match is None or similarity > best_match[0]:
+                best_match = (similarity, candidate)
+
+        similarity, best_candidate = best_match  # pyright: ignore[reportGeneralTypeIssues]
+
+        if similarity < MATCH_SIMILARITY_THRESHOLD:
+            continue
+
+        unmatched_dir1.discard(path_in_dir1)
+        unmatched_dir2.discard(best_candidate)
+
+        changed = diff_texts(file1_lines, read_file_from_dir2(best_candidate))
+
+        if changed > 0:
+            changes.append(FileChange(path=path_in_dir1, changed=changed, path_new=best_candidate))
+
+    return changes, sorted(unmatched_dir1), sorted(unmatched_dir2)

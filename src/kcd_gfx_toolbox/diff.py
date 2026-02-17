@@ -133,7 +133,7 @@ def main() -> int:
 
     print(f"\n{AnsiColor.BLUE}» 2: Searching for file differences{AnsiColor.RESET}\n")
 
-    only_in_a, only_in_b, different = diff_file_trees_basic(extraction_dir_a, extraction_dir_b)
+    different, only_in_a, only_in_b = diff_file_trees_basic(extraction_dir_a, extraction_dir_b)
 
     if only_in_a:
         print(f"Scripts only present in {file_a}:")
@@ -250,7 +250,7 @@ def main() -> int:
 
     print(f"\n{AnsiColor.BLUE}» 4: Comparison of normalized code{AnsiColor.RESET}\n")
 
-    only_in_a, only_in_b, changes = diff_file_trees(
+    changes, only_in_a, only_in_b = diff_file_trees(
         normalization_dir_a, normalization_dir_b, include_paths=normalized_paths
     )
 
@@ -279,7 +279,11 @@ def main() -> int:
         diff_table.add_column("Relative inner path")
         diff_table.add_column("Lines changed", justify="right")
         for ch in changes:
-            diff_table.add_row(str(ch.path), str(ch.changed))
+            if ch.path_new is not None:
+                display_path = f"{ch.path} => {ch.path_new}"
+            else:
+                display_path = str(ch.path)
+            diff_table.add_row(display_path, str(ch.changed))
 
         console.print(diff_table)
 
