@@ -2,7 +2,7 @@
 
 from .extract import extraction_cache_key, resolve_ffdec, extract_gfx_contents
 from .lib.avm1_pcode_normalization import NormalizationStats, normalize_file
-from .lib.diff import diff_file_trees, diff_file_trees_basic
+from .lib.diff import diff_file_trees, diff_file_trees_basic, format_path_rename_git_style
 from .lib.util import AnsiColor, ensure_empty_dir, print_error, get_temp_dir
 from pathlib import Path
 import argparse
@@ -279,10 +279,7 @@ def main() -> int:
         diff_table.add_column("Relative inner path")
         diff_table.add_column("Lines changed", justify="right")
         for ch in changes:
-            if ch.path_new is not None:
-                display_path = f"{ch.path} => {ch.path_new}"
-            else:
-                display_path = str(ch.path)
+            display_path = format_path_rename_git_style(ch.path, ch.path_new)
             diff_table.add_row(display_path, str(ch.changed))
 
         console.print(diff_table)

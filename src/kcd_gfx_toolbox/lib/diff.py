@@ -209,3 +209,67 @@ def diff_file_trees(
             changes.append(FileChange(path=path_in_dir1, changed=changed, path_new=best_candidate))
 
     return changes, sorted(unmatched_dir1), sorted(unmatched_dir2)
+
+
+def format_path_rename_git_style(path_a: Path, path_b: Path | None) -> str:
+    """
+    Format a path rename in a style close to Git diff/commit summaries.
+    Examples:
+        scripts/__Packages/StashManager/{old.pcode => new.pcode}
+        scripts/__Packages/{StashManager => StashItemRenderer}/my_block.pcode
+        scripts/toto/nioup.txt => ernest/acab.txt
+    """
+    if path_b is None or path_a == path_b:
+        return path_a.as_posix()
+
+    a_parts = list(path_a.parts)
+    b_parts = list(path_b.parts)
+
+    prefix_parts = []
+    suffix_parts = []
+
+    for part1, part2 in list(zip(a_parts, b_parts)):
+        if part1 != part2:
+            break
+        prefix_parts.append(part1)
+        a_parts.pop(0)
+        b_parts.pop(0)
+
+    # If exactly one path side became empty after prefix scanning,
+    # we move one segment/part back into the "rename" chunk.
+    # This enables `foo/{bar => bar/baz}` instead of `foo/bar/{ => baz}`, like Git does.
+    if prefix_parts and (not a_parts) != (not b_parts):
+        part = prefix_parts.pop()
+        a_parts.insert(0, part)
+        b_parts.insert(0, part)
+
+    for part1, part2 in zip(reversed(a_parts), reversed(b_parts)):
+        if part1 != part2:
+            break
+        suffix_parts.append(part1)
+        a_parts.pop()
+        b_parts.pop()
+
+    # If exactly one path side became empty after suffix scanning,
+    # we move one segment/part back into the "rename" chunk.
+    # This enables `{foo/bar => bar}/baz` instead of `{foo => }/bar/baz`, like Git does.
+    if suffix_parts and (not a_parts) != (not b_parts):
+        part = suffix_parts.pop()
+        a_parts.append(part)
+        b_parts.append(part)
+
+    if not bool(prefix_parts or suffix_parts):
+        # When there is no common prefix or suffix, drop the curly braces.
+        return f"{path_a.as_posix()} => {path_b.as_posix()}"
+
+    return (
+        "/".join(prefix_parts)
+        + ("/" if prefix_parts else "")
+        + "{"
+        + "/".join(a_parts)
+        + " => "
+        + "/".join(b_parts)
+        + "}"
+        + ("/" if suffix_parts else "")
+        + "/".join(reversed(suffix_parts))
+    )
