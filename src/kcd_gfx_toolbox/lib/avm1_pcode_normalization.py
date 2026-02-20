@@ -10,9 +10,6 @@ LABEL_REFERENCED_LINE_RE = re.compile(rf"^(?P<opcode>If|Jump)\s+(?P<label>{WORD_
 DOT0_RE = re.compile(r"\b(-?\d+)\.0\b")  # 0.0, 1.0, 5.0...
 NEG0_RE = re.compile(r"(^|[\s,])-0(?=($|[\s,]))")
 
-REGISTER_RE = re.compile(r"\b(?:register|r)(\d+)\b")
-STORE_REGISTER_RE = re.compile(r"\bStoreRegister\s+(?:register|r)?(\d+)\b")
-
 PUSH_SINGLE_RE = re.compile(r'^\s*Push\s+(?:register\d+|r\d+)\s*,\s*"([^"]+)"\s*$')
 PUSH_OBJ_RE = re.compile(r"^\s*Push\s+(?:register\d+|r\d+)\s*$")
 PUSH_NAME_RE = re.compile(r'^\s*Push\s+"([^"]+)"\s*$')
@@ -342,7 +339,8 @@ def canonicalize_function_definition_headers(lines: list[str]) -> list[str]:
 
 def canonicalize_register_references_in_function_block(lines: list[str]) -> list[str]:
     """
-    Canonicalize register references (`registerN` or `StoreRegister N`) by reindexing them by order of appearance.
+    Canonicalize register references (`registerN` and `StoreRegister N`) by reindexing them
+    by order of appearance.
 
     Example:
         Push register2, "m_Count"
@@ -387,15 +385,36 @@ def canonicalize_register_references_in_function_block(lines: list[str]) -> list
             next_reg_index += 1
         return registers_seen[reg_idx]
 
+    read_register_re = re.compile(r"^register(\d+)$")
+    store_register_operand_re = re.compile(r"^\d+$")
+
     for i in range(define_function_index + 1, end + 1):
         line = canonicalized_lines[i]
+        replacements: list[tuple[tuple[int, str], str]] = []
+        tokens = tokenize_line(line)
+        j = 0
 
-        if reg_store_match := STORE_REGISTER_RE.search(line):
-            register_num = reg_store_match.group(1)
-            canon_index = canonicalize_register_index(register_num)
-            line = STORE_REGISTER_RE.sub(f"StoreRegister {canon_index}", line, count=1)
+        while j < len(tokens):
+            pos, tok = tokens[j]
 
-        canonicalized_lines[i] = REGISTER_RE.sub(lambda m: f"register{canonicalize_register_index(m.group(1))}", line)
+            if tok == "StoreRegister" and j + 1 < len(tokens):
+                next_pos, next_tok = tokens[j + 1]
+                if store_register_operand_re.fullmatch(next_tok):
+                    canon_index = canonicalize_register_index(next_tok)
+                    replacements.append(((next_pos, next_tok), str(canon_index)))
+                    j += 2
+                    continue
+
+            if match := read_register_re.fullmatch(tok):
+                canon_index = canonicalize_register_index(match.group(1))
+                replacements.append(((pos, tok), f"register{canon_index}"))
+
+            j += 1
+
+        for (pos, original), replacement in reversed(replacements):
+            line = line[:pos] + replacement + line[pos + len(original) :]
+
+        canonicalized_lines[i] = line
 
     return canonicalized_lines
 

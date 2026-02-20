@@ -346,6 +346,36 @@ def test_canonicalize_register_references_in_non_function_block():
     """)
 
 
+def test_canonicalize_register_references_preserves_string_literals():
+    pcode_sample = sample_text_lines("""
+        Push register2
+        Push "SetItemQuantityInRegister8"
+        DefineFunction "", 1, "count" {
+        Push "register8"
+        Push register8
+        Push "StoreRegister 8"
+        StoreRegister 8
+        Push register2
+        }
+        SetMember
+    """)
+
+    canonicalized = avm1_pcode_normalization.canonicalize_register_references_in_function_block(pcode_sample)
+
+    assert canonicalized == sample_text_lines("""
+        Push register2
+        Push "SetItemQuantityInRegister8"
+        DefineFunction "", 1, "count" {
+        Push "register8"
+        Push register1
+        Push "StoreRegister 8"
+        StoreRegister 1
+        Push register2
+        }
+        SetMember
+    """)
+
+
 def test_normalize_not_not_if_patterns():
     pcode_sample = sample_text_lines("""
         Push register2
