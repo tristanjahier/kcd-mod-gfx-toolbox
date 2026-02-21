@@ -376,6 +376,43 @@ def test_canonicalize_register_references_preserves_string_literals():
     """)
 
 
+def test_canonicalize_register_references_isolates_nested_function_scopes():
+    pcode_sample = sample_text_lines("""
+        Push register2
+        Push "SetItemQuantity"
+        DefineFunction "", 0 {
+        Push register9
+        StoreRegister 9
+        DefineFunction "inner", 0 {
+        Push register42
+        StoreRegister 42
+        }
+        Push register8
+        StoreRegister 8
+        }
+        SetMember
+    """)
+
+    canonicalized = avm1_pcode_normalization.canonicalize_register_references_in_function_block(pcode_sample)
+
+    # Nested function register remapping must not affect parent function scope.
+    assert canonicalized == sample_text_lines("""
+        Push register2
+        Push "SetItemQuantity"
+        DefineFunction "", 0 {
+        Push register1
+        StoreRegister 1
+        DefineFunction "inner", 0 {
+        Push register1
+        StoreRegister 1
+        }
+        Push register2
+        StoreRegister 2
+        }
+        SetMember
+    """)
+
+
 def test_normalize_not_not_if_patterns():
     pcode_sample = sample_text_lines("""
         Push register2

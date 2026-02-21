@@ -371,25 +371,22 @@ def canonicalize_register_references_in_function_block(lines: list[str]) -> list
     if define_function_index is None:
         return lines
 
-    # Only rewrite within the function body.
-    end = find_function_end_line(lines, define_function_index)
-
     canonicalized_lines: list[str] = lines.copy()
-    registers_seen: dict[str, int] = {}
-    next_reg_index = 1
-
-    def canonicalize_register_index(reg_idx: str) -> int:
-        nonlocal next_reg_index
-        if reg_idx not in registers_seen:
-            registers_seen[reg_idx] = next_reg_index
-            next_reg_index += 1
-        return registers_seen[reg_idx]
-
     read_register_re = re.compile(r"^register(\d+)$")
     store_register_operand_re = re.compile(r"^\d+$")
 
-    for i in range(define_function_index + 1, end + 1):
-        line = canonicalized_lines[i]
+    class RegisterScope:
+        def __init__(self):
+            self.registers_seen: dict[str, int] = {}
+            self.next_reg_index = 1
+
+        def canonicalize_register_index(self, reg_idx: str) -> int:
+            if reg_idx not in self.registers_seen:
+                self.registers_seen[reg_idx] = self.next_reg_index
+                self.next_reg_index += 1
+            return self.registers_seen[reg_idx]
+
+    def canonicalize_line(line: str, scope: RegisterScope) -> str:
         replacements: list[tuple[tuple[int, str], str]] = []
         tokens = tokenize_line(line)
         j = 0
@@ -400,13 +397,13 @@ def canonicalize_register_references_in_function_block(lines: list[str]) -> list
             if tok == "StoreRegister" and j + 1 < len(tokens):
                 next_pos, next_tok = tokens[j + 1]
                 if store_register_operand_re.fullmatch(next_tok):
-                    canon_index = canonicalize_register_index(next_tok)
+                    canon_index = scope.canonicalize_register_index(next_tok)
                     replacements.append(((next_pos, next_tok), str(canon_index)))
                     j += 2
                     continue
 
             if match := read_register_re.fullmatch(tok):
-                canon_index = canonicalize_register_index(match.group(1))
+                canon_index = scope.canonicalize_register_index(match.group(1))
                 replacements.append(((pos, tok), f"register{canon_index}"))
 
             j += 1
@@ -414,7 +411,28 @@ def canonicalize_register_references_in_function_block(lines: list[str]) -> list
         for (pos, original), replacement in reversed(replacements):
             line = line[:pos] + replacement + line[pos + len(original) :]
 
-        canonicalized_lines[i] = line
+        return line
+
+    def canonicalize_function_scope(define_idx: int) -> int:
+        """Canonicalize all lines in a function scope and call itself recursively when encountering a nested function"""
+        end_idx = find_function_end_line(canonicalized_lines, define_idx)
+        scope = RegisterScope()
+
+        i = define_idx + 1
+        while i <= end_idx:
+            current = strip_label(canonicalized_lines[i]).strip()
+
+            if DEFINE_FUNCTION_ANY_RE.match(current):
+                nested_end_idx = canonicalize_function_scope(i)
+                i = nested_end_idx + 1
+                continue
+
+            canonicalized_lines[i] = canonicalize_line(canonicalized_lines[i], scope)
+            i += 1
+
+        return end_idx
+
+    canonicalize_function_scope(define_function_index)
 
     return canonicalized_lines
 

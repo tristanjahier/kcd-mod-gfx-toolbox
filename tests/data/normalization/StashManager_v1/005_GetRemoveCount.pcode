@@ -14,12 +14,12 @@ L1:Return
 Push 0
 Push "Array"
 NewObject
-StoreRegister 3
+StoreRegister 1
 Pop
-Push register1
+Push register2
 Push "m_DisplayedData"
 GetMember
-Push register2
+Push register3
 GetMember
 Push "slots"
 GetMember
@@ -47,10 +47,10 @@ GetMember
 Less2
 Not
 If L3
-Push register1
+Push register2
 Push "m_DisplayedData"
 GetMember
-Push register2
+Push register3
 GetMember
 Push "type"
 GetMember
@@ -58,7 +58,7 @@ Push register4
 Push register5
 GetMember
 Push 2
-Push register1
+Push register2
 Push "GetSlot"
 CallMethod
 StoreRegister 6
@@ -97,7 +97,7 @@ CallMethod
 Push 3
 InitObject
 Push 1
-Push register3
+Push register1
 Push "push"
 CallMethod
 Pop
@@ -123,24 +123,24 @@ Push 0
 StoreRegister 5
 Pop
 L6:Push register5
-Push register3
+Push register1
 Push "length"
 GetMember
 Less2
 Not
 If L5
-Push register3
+Push register1
 Push register5
 GetMember
 Push "type"
 GetMember
-Push register3
+Push register1
 Push register5
 GetMember
 Push "slotId"
 GetMember
 Push 2
-Push register1
+Push register2
 Push "GetSlot"
 CallMethod
 StoreRegister 6
@@ -157,7 +157,7 @@ Push "GetCount"
 CallMethod
 StoreRegister 8
 Pop
-Push register3
+Push register1
 Push register5
 GetMember
 Push "count"
@@ -166,7 +166,7 @@ Push register8
 Less2
 Not
 If L7
-Push register3
+Push register1
 Push register5
 GetMember
 Push "count"
@@ -177,19 +177,19 @@ Push "RemoveCount"
 CallMethod
 Pop
 Jump L8
-L7:Push register3
+L7:Push register1
 Push register5
 GetMember
 Push "type"
 GetMember
 Push 0
-Push register3
+Push register1
 Push register5
 GetMember
 Push "slotId"
 GetMember
 Push 3
-Push register1
+Push register2
 Push "RemoveSlot"
 CallMethod
 Pop
@@ -199,7 +199,7 @@ Add2
 StoreRegister 5
 Pop
 Jump L6
-L5:Push register3
+L5:Push register1
 Return
 }
 SetMember
