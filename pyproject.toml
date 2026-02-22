@@ -26,5 +26,9 @@ line-length = 120
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
     "ruff>=0.15.1",
 ]
+
+[tool.pytest.ini_options]
+addopts = "--cov=kcd_gfx_toolbox --cov-report=term-missing"
