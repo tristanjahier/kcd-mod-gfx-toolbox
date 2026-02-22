@@ -76,7 +76,7 @@ def test_diff_file_trees_basic_with_differences_but_mirrored_paths(tmp_path: Pat
         tmp_path,
         {
             "B/": None,
-            "B/blabla.txt": "blablad",
+            "B/blabla.txt": "blablu",
             "B/Caca/": None,
             "B/Caca/niouf.txt": "Nioufiniouk",
             "B/Caca/empty.txt": "",
