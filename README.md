@@ -4,6 +4,8 @@ This repository contains a small Python CLI toolkit to compare two `.gfx` files 
 
 `.gfx` files are Scaleform GFx assets: compiled Adobe Flash/ActionScript content used to build game UIs (menus, HUD) in Kingdom Come: Deliverance and many other games. `.gfx` files are `.swf` files optimised for games.
 
+<a href="https://github.com/tristanjahier/kcd-mod-gfx-toolbox/actions"><img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/tristanjahier/kcd-mod-gfx-toolbox/ci.yml?style=flat&logo=pytest&logoColor=white&label=tests"></a>
+
 ## Requirements
 
 Python 3.11+.
