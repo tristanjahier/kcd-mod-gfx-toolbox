@@ -785,7 +785,7 @@ def test_diff_file_trees_with_include_paths_filter(tmp_path: Path):
     changes, only_in_a, only_in_b = difflib.diff_file_trees(
         tmp_path / "A",
         tmp_path / "B",
-        include_paths=[Path("keep")],
+        include_paths={Path("keep")},
     )
 
     assert set(changes) == {
@@ -798,24 +798,6 @@ def test_diff_file_trees_with_include_paths_filter(tmp_path: Path):
 
     assert set(only_in_a) == {Path("keep/only_in_a.pcode")}
     assert set(only_in_b) == {Path("keep/only_in_b.pcode")}
-
-
-def test_format_path_rename_git_style_edge_cases():
-    assert difflib.format_path_rename_git_style(Path("a/b.txt"), Path("c/d.txt")) == "a/b.txt => c/d.txt"
-
-    assert difflib.format_path_rename_git_style(Path("foo/bar"), Path("foo/bar/baz")) == "foo/{bar => bar/baz}"
-
-    assert difflib.format_path_rename_git_style(Path("foo/bar/baz"), Path("bar/baz")) == "{foo/bar => bar}/baz"
-
-    assert (
-        difflib.format_path_rename_git_style(
-            Path("qsdfsdf/pppp/yap/sdfdf/debo.txt"),
-            Path("qsdfsdf/pppp/yap/sdfdf/pipi/yyy.txt"),
-        )
-        == "qsdfsdf/pppp/yap/sdfdf/{debo.txt => pipi/yyy.txt}"
-    )
-
-    assert difflib.format_path_rename_git_style(Path("unchanged/path.txt"), None) == "unchanged/path.txt"
 
 
 def test_diff_file_trees_hash_pairing_with_unequal_counts(tmp_path: Path):
@@ -854,3 +836,21 @@ def test_diff_file_trees_hash_pairing_with_unequal_counts(tmp_path: Path):
         Path("scripts/clone_a2.pcode"),
         Path("scripts/clone_a3.pcode"),
     }
+
+
+def test_format_path_rename_git_style_edge_cases():
+    assert difflib.format_path_rename_git_style(Path("a/b.txt"), Path("c/d.txt")) == "a/b.txt => c/d.txt"
+
+    assert difflib.format_path_rename_git_style(Path("foo/bar"), Path("foo/bar/baz")) == "foo/{bar => bar/baz}"
+
+    assert difflib.format_path_rename_git_style(Path("foo/bar/baz"), Path("bar/baz")) == "{foo/bar => bar}/baz"
+
+    assert (
+        difflib.format_path_rename_git_style(
+            Path("qsdfsdf/pppp/yap/sdfdf/debo.txt"),
+            Path("qsdfsdf/pppp/yap/sdfdf/pipi/yyy.txt"),
+        )
+        == "qsdfsdf/pppp/yap/sdfdf/{debo.txt => pipi/yyy.txt}"
+    )
+
+    assert difflib.format_path_rename_git_style(Path("unchanged/path.txt"), None) == "unchanged/path.txt"
