@@ -6,6 +6,7 @@ requires-python = ">= 3.11"
 readme = "README.md"
 dependencies = [
     "rich>=14.3.2",
+    "typer>=0.24.1",
 ]
 
 [build-system]
@@ -13,9 +14,7 @@ requires = ["uv_build >= 0.10.2, < 0.11.0"]
 build-backend = "uv_build"
 
 [project.scripts]
-gfx-diff = "kcd_gfx_toolbox.diff:main"
-gfx-extract = "kcd_gfx_toolbox.extract:main"
-gfx-normalize = "kcd_gfx_toolbox.normalize:main"
+kcd-gfx = "kcd_gfx_toolbox.cli:app"
 
 [tool.uv.build-backend]
 module-name = "kcd_gfx_toolbox"

@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Callable, Iterable
-from .extract import extraction_cache_key, resolve_ffdec, extract_gfx_contents
+from typing import Annotated, Callable, Iterable
+import typer
+from .cli_extract import extraction_cache_key, resolve_ffdec, extract_gfx_contents
 from .lib.avm1_pcode_normalization import NormalizationStats, normalize_file
 from .lib.diff import FileChange, diff_file_trees, diff_file_trees_basic
 from .lib.util import AnsiColor, ensure_empty_dir, print_error, get_temp_dir
 from pathlib import Path
-import argparse
 import shutil
 import subprocess
 from rich.console import Console, RenderableType
@@ -220,58 +220,53 @@ def unfold_script_tree_in_table(
             table.add_row(block_text, *block_attr)
 
 
-def read_arguments():
-    argument_parser = argparse.ArgumentParser()
-    argument_parser.add_argument("file_a", type=Path)
-    argument_parser.add_argument("file_b", type=Path)
-    argument_parser.add_argument("--ffdec", type=Path)
-    argument_parser.add_argument(
-        "--cache-extraction",
-        dest="use_extraction_cache",
-        action="store_true",
-        help="Use extraction cache (default).",
-    )
-    argument_parser.add_argument(
-        "--no-extraction-cache",
-        dest="use_extraction_cache",
-        action="store_false",
-        help="Disable extraction cache and force re-extraction.",
-    )
-    argument_parser.set_defaults(use_extraction_cache=True)
-    return argument_parser.parse_args()
-
-
-def main() -> int:
-    args = read_arguments()
+def command(
+    file_a: Annotated[Path, typer.Argument(help="The left (A) file of the comparison.")],
+    file_b: Annotated[Path, typer.Argument(help="The right (B) file of the comparison.")],
+    ffdec_path: Annotated[
+        Path | None,
+        typer.Option("--ffdec", help="Path to the ffdec binary. Only required if it is not in the system PATH."),
+    ] = None,
+    use_extraction_cache: Annotated[
+        bool,
+        typer.Option(
+            "--cache-extraction/--no-extraction-cache",
+            help="Use extraction cache (default). Disable to force re-extraction.",
+        ),
+    ] = True,
+):
+    """
+    Compare scripts between two GFx files to surface meaningful changes through normalization.
+    """
     console = Console()
 
     # ================================================================
     # Sanity checks
 
-    file_a = args.file_a.resolve()
-    file_b = args.file_b.resolve()
+    file_a = file_a.resolve()
+    file_b = file_b.resolve()
 
     if not file_a.is_file():
         print_error(f"Invalid input: {file_a} is not a file.")
-        return 1
+        raise typer.Exit(code=1)
 
     if not file_b.is_file():
         print_error(f"Invalid input: {file_b} is not a file.")
-        return 1
+        raise typer.Exit(code=1)
 
     temp_dir = get_temp_dir()
 
     if temp_dir.exists() and not temp_dir.is_dir():
         print_error(f"Temp path exists but is not a directory: {temp_dir}")
-        return 1
+        raise typer.Exit(code=1)
 
     temp_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        ffdec_path = resolve_ffdec(args.ffdec)
+        ffdec_path = resolve_ffdec(ffdec_path)
     except FileNotFoundError as e:
         print_error(e)
-        return 1
+        raise typer.Exit(code=1)
 
     print(f"{AnsiColor.LIGHT_YELLOW}File A:{AnsiColor.RESET} {file_a}")
     print(f"{AnsiColor.LIGHT_YELLOW}File B:{AnsiColor.RESET} {file_b}")
@@ -286,8 +281,6 @@ def main() -> int:
     # ================================================================
     # Step 1: extract contents from both files.
     # For that we use "JPEXS Free Flash Decompiler" aka ffdec.
-
-    use_extraction_cache: bool = args.use_extraction_cache
 
     print(f"\n{AnsiColor.BLUE}» 1: Extraction of GFX scripts as p-code{AnsiColor.RESET}\n")
 
@@ -310,7 +303,7 @@ def main() -> int:
             print_error(f"ffdec-cli.exe failed with code {e.returncode}:")
             if e.stderr:
                 print_error(e.stderr)
-            return 1
+            raise typer.Exit(code=1)
     else:
         print("Extraction directory already exists. Reusing.")
 
@@ -333,7 +326,7 @@ def main() -> int:
             print_error(f"ffdec-cli.exe failed with code {e.returncode}:")
             if e.stderr:
                 print_error(e.stderr)
-            return 1
+            raise typer.Exit(code=1)
     else:
         print("Extraction directory already exists. Reusing.")
 
@@ -351,7 +344,7 @@ def main() -> int:
 
     if diffset.is_empty():
         print(f"{AnsiColor.GREEN}Both files are identical.{AnsiColor.RESET}")
-        return 0
+        return
 
     if diffset.has_unmatched_scripts_on_side_a():
         print(f"Scripts only present in {file_a}:")
@@ -371,7 +364,7 @@ def main() -> int:
             print(f"{path}")
     else:
         console.print("[yellow]Common scripts are identical. Comparing unmatched scripts is not supported.[/yellow]")
-        return 0
+        return
 
     # ================================================================
     # Step 3: normalize the differing scripts, to remove the noise in p-codes due to decompilation,
@@ -405,7 +398,7 @@ def main() -> int:
         except Exception as e:
             print_error(f"Normalization failed: {src_a}")
             print_error(e)
-            return 1
+            raise typer.Exit(code=1)
 
         ensure_empty_dir(normalized_blocks_dir_b)
 
@@ -415,7 +408,7 @@ def main() -> int:
         except Exception as e:
             print_error(f"Normalization failed: {src_b}")
             print_error(e)
-            return 1
+            raise typer.Exit(code=1)
 
     print(f"{file_a}:")
 
@@ -470,7 +463,7 @@ def main() -> int:
         print(
             f"{AnsiColor.GREEN}Normalized trees are identical. The difference might be decompilation noise only.{AnsiColor.RESET}"
         )
-        return 0
+        return
 
     # Organize file tree diffs by script origin.
     diffset.populate_script_details_from_file_tree_diff(changes, only_in_a, only_in_b)
@@ -529,9 +522,3 @@ def main() -> int:
         unfold_script_tree_in_table(diffset.get_scripts_with_unmatched_blocks(), diff_table, _get_unmatched_block_rows)
 
     console.print(diff_table)
-
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

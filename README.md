@@ -24,7 +24,7 @@ ffdec -format script:pcode -export script output_dir myfile.gfx
 ### Compare two `.gfx` files (main utility)
 
 ```sh
-uv run gfx-diff a/path/to/file1.gfx a/path/to/file2.gfx --ffdec "/the/path/to/ffdec"
+uv run kcd-gfx diff a/path/to/file1.gfx a/path/to/file2.gfx --ffdec "/the/path/to/ffdec"
 ```
 
 This script is intended for comparing two `.gfx` files that are mostly similar, such as a modded file and its vanilla game counterpart. It helps pinpoint the script-level changes introduced by the mod.
@@ -42,7 +42,7 @@ Intermediate files will be written to your system’s temporary directory.
 ### Extract scripts only
 
 ```sh
-uv run gfx-extract a/path/to/file.gfx --ffdec "/the/path/to/ffdec"
+uv run kcd-gfx extract a/path/to/file.gfx --ffdec "/the/path/to/ffdec"
 ```
 
 Currently, extraction output is always written to your system’s temporary directory.
@@ -50,7 +50,7 @@ Currently, extraction output is always written to your system’s temporary dire
 ### Normalize a `.pcode` file into blocks
 
 ```sh
-uv run gfx-normalize a/path/to/MyScript.pcode a/path/to/output_dir
+uv run kcd-gfx normalize a/path/to/MyScript.pcode a/path/to/output_dir
 ```
 
 One file is written per normalized block at the root of the output directory.
