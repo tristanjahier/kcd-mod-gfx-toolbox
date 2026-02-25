@@ -1,5 +1,5 @@
 from kcd_gfx_toolbox.lib import avm1_pcode_normalization
-from .helpers import sample_text_lines, list_data_files, read_data_file, get_test_data_dir
+from .helpers import sample_text, sample_text_lines, list_data_files, read_data_file, get_test_data_dir
 import re
 from collections import Counter
 
@@ -134,6 +134,86 @@ def test_split_into_blocks():
             continue
 
         raise RuntimeError(f"Cannot find data fixture for {block_name} in pcode/blocks/StashManager_v1.")
+
+
+def test_split_into_blocks_no_lookback_if_name_declared_in_function_definition_header():
+    pcode_sample = sample_text("""
+        Push register2, "WrongLookbackName"
+        loc0400:DefineFunction2 "SetupElements", 0, 6, false, false, true, false, true, false, false, true, false {
+        Push 0.0
+        StoreRegister 4
+        Pop
+        }
+        SetMember
+    """)
+
+    blocks = avm1_pcode_normalization.split_into_blocks(pcode_sample)
+
+    assert [name for name, _ in blocks] == ["__toplevel", "SetupElements"]
+
+    assert blocks[1][1] == sample_text_lines("""
+        loc0400:DefineFunction2 "SetupElements", 0, 6, false, false, true, false, true, false, false, true, false {
+        Push 0.0
+        StoreRegister 4
+        Pop
+        }
+        SetMember
+    """)
+
+
+def test_split_into_blocks_unnamed_function_uses_lookback_and_includes_binding_lines():
+    pcode_sample = sample_text("""
+        Push register3
+        StoreRegister 4
+        Pop
+        Push register8
+        Push "BoundByLookback"
+        DefineFunction2 "", 1, 2, false, false, true, false, true, false, true, false, false, 1, "value" {
+        Push register1
+        Return
+        }
+        SetMember
+    """)
+
+    blocks = avm1_pcode_normalization.split_into_blocks(pcode_sample)
+
+    assert [name for name, _ in blocks] == ["__toplevel", "BoundByLookback"]
+
+    assert blocks[1][1] == sample_text_lines("""
+        Push register8
+        Push "BoundByLookback"
+        DefineFunction2 "", 1, 2, false, false, true, false, true, false, true, false, false, 1, "value" {
+        Push register1
+        Return
+        }
+        SetMember
+    """)
+
+
+def test_split_into_blocks_drops_overlapping_lookback_for_unnamed_function():
+    pcode_sample = sample_text("""
+        Push register2
+        Push "FirstFunction"
+        DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {
+        Push 1
+        }
+        SetMember
+        DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {
+        Push 2
+        }
+        SetMember
+    """)
+
+    blocks = avm1_pcode_normalization.split_into_blocks(pcode_sample)
+
+    assert [name for name, _ in blocks] == ["FirstFunction", "__anonymous"]
+
+    assert blocks[1][1] == sample_text_lines("""
+        DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {
+        Push 2
+        }
+        SetMember
+    """)
 
 
 def test_tokenize_line():

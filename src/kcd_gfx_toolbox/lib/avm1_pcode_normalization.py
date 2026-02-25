@@ -87,10 +87,11 @@ def find_function_end_line(lines: list[str], define_function_idx: int) -> int:
 def split_into_blocks(pcode_text: str) -> list[tuple[str, list[str]]]:
     """
     Splits a p-code text into a sequence of blocks:
-    - Function blocks: named from method binding when found, otherwise `__anonymous`. A function block includes:
-        - optional binding `Push` line(s),
-        - the `DefineFunction`/`DefineFunction2` body,
-        - a trailing `SetMember` when present.
+    - Function blocks:
+        - If the `DefineFunction`/`DefineFunction2` header has a non-empty name, that name is used and
+          the block starts on the header line.
+        - Otherwise, block name is inferred by scanning previous lines for member-binding patterns.
+        - A trailing `SetMember` is included when present.
     - Top-level gap blocks between or around function blocks (for example, class property initialization).
     """
     lines = pcode_text.replace("\r\n", "\n").replace("\r", "\n").splitlines()
@@ -112,17 +113,22 @@ def split_into_blocks(pcode_text: str) -> list[tuple[str, list[str]]]:
 
         # If we find a function definition keyword.
         if DEFINE_FUNCTION_ANY_RE.match(current):
-            func_info = find_function_name_and_start_line(lines, i)
+            header_match = DEFINE_FUNCTION_HEADER_RE.match(current)
+            declared_name = header_match.group(1) if header_match else None
 
-            if func_info:
-                start, func_name = func_info
+            if declared_name:
+                # The function definition header contains the function name.
+                start, func_name = i, declared_name
             else:
-                start, func_name = i, "__anonymous"
+                # No name is declared in the header, we need to look back at previous lines.
+                func_info = find_function_name_and_start_line(lines, i)
 
-            # The following condition should never happen with well-formed p-code.
-            # However, in case of a lookup failure, at least we avoid overlapping blocks.
-            if start < next_gap_start:
-                start = next_gap_start
+                # Keep the name found from lookback only if we can include those lookback lines in this block.
+                # Otherwise, avoid carrying a stale name from already-consumed lines. Prevent overlapping.
+                if func_info is not None and func_info[0] >= next_gap_start:
+                    start, func_name = func_info
+                else:
+                    start, func_name = i, "__anonymous"
 
             # We need to register the "gap" that we passed between this function block and the previous one, if any.
             if next_gap_start < start:
