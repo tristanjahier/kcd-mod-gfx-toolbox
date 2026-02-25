@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from kcd_gfx_toolbox.lib import diff as difflib
+from kcd_gfx_toolbox import file_diff
 from tests.helpers import sample_text, sample_text_lines
 
 
@@ -53,7 +53,7 @@ def test_diff_file_trees_basic_with_no_differences(tmp_path: Path):
         },
     )
 
-    different, only_in_a, only_in_b = difflib.diff_file_trees_basic(tmp_path / "A", tmp_path / "B")
+    different, only_in_a, only_in_b = file_diff.diff_file_trees_basic(tmp_path / "A", tmp_path / "B")
 
     assert not different
     assert not only_in_a
@@ -83,7 +83,7 @@ def test_diff_file_trees_basic_with_differences_but_mirrored_paths(tmp_path: Pat
         },
     )
 
-    different, only_in_a, only_in_b = difflib.diff_file_trees_basic(tmp_path / "A", tmp_path / "B")
+    different, only_in_a, only_in_b = file_diff.diff_file_trees_basic(tmp_path / "A", tmp_path / "B")
 
     assert set(different) == {
         Path("blabla.txt"),
@@ -118,7 +118,7 @@ def test_diff_file_trees_basic_with_many_differences(tmp_path: Path):
         },
     )
 
-    different, only_in_a, only_in_b = difflib.diff_file_trees_basic(tmp_path / "A", tmp_path / "B")
+    different, only_in_a, only_in_b = file_diff.diff_file_trees_basic(tmp_path / "A", tmp_path / "B")
 
     assert set(different) == {
         Path("Caca/niouf.txt"),
@@ -154,7 +154,7 @@ def test_diff_texts_with_no_differences():
         GetMember
     """)
 
-    changed = difflib.diff_texts(text_sample_1, text_sample_2)
+    changed = file_diff.diff_texts(text_sample_1, text_sample_2)
 
     assert changed == 0
 
@@ -186,7 +186,7 @@ def test_diff_texts_with_only_insertions():
         GetMember
     """)
 
-    changed = difflib.diff_texts(text_sample_1, text_sample_2)
+    changed = file_diff.diff_texts(text_sample_1, text_sample_2)
 
     assert changed == 2
 
@@ -215,7 +215,7 @@ def test_diff_texts_with_only_deletions():
         GetMember
     """)
 
-    changed = difflib.diff_texts(text_sample_1, text_sample_2)
+    changed = file_diff.diff_texts(text_sample_1, text_sample_2)
 
     assert changed == 1
 
@@ -246,7 +246,7 @@ def test_diff_texts_with_only_replacements():
         GetMember
     """)
 
-    changed = difflib.diff_texts(text_sample_1, text_sample_2)
+    changed = file_diff.diff_texts(text_sample_1, text_sample_2)
 
     assert changed == 3
 
@@ -279,7 +279,7 @@ def test_diff_texts_with_a_bit_of_everything():
         GetMember
     """)
 
-    changed = difflib.diff_texts(text_sample_1, text_sample_2)
+    changed = file_diff.diff_texts(text_sample_1, text_sample_2)
 
     # 3 inserts at the beginning
     # max(2, 3) lines replaced in the middle
@@ -315,14 +315,14 @@ def test_diff_texts_with_a_bit_of_everything_reversed():
         GetMember
     """)
 
-    changed = difflib.diff_texts(text_sample_1, text_sample_2)
+    changed = file_diff.diff_texts(text_sample_1, text_sample_2)
 
     # Must result in the same number of changed lines in reverse.
     assert changed == 7
 
 
 def test_diff_texts_with_nothing():
-    assert difflib.diff_texts([], []) == 0
+    assert file_diff.diff_texts([], []) == 0
 
 
 def test_diff_file_trees_with_no_differences(tmp_path: Path):
@@ -349,7 +349,7 @@ def test_diff_file_trees_with_no_differences(tmp_path: Path):
         },
     )
 
-    changes, only_in_a, only_in_b = difflib.diff_file_trees(tmp_path / "A", tmp_path / "B")
+    changes, only_in_a, only_in_b = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
 
     assert not changes
     assert not only_in_a
@@ -382,11 +382,11 @@ def test_diff_file_trees_with_differences_but_mirrored_paths(tmp_path: Path):
         },
     )
 
-    changes, only_in_a, only_in_b = difflib.diff_file_trees(tmp_path / "A", tmp_path / "B")
+    changes, only_in_a, only_in_b = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
 
     assert set(changes) == {
-        difflib.FileChange(path=Path("blabla.txt"), changed=1, path_new=None),
-        difflib.FileChange(path=Path("Caca/niouf.txt"), changed=2, path_new=None),
+        file_diff.FileChange(path=Path("blabla.txt"), changed=1, path_new=None),
+        file_diff.FileChange(path=Path("Caca/niouf.txt"), changed=2, path_new=None),
     }
 
     assert not only_in_a
@@ -414,7 +414,7 @@ def test_diff_file_trees_with_only_unmatched_paths(tmp_path: Path):
         },
     )
 
-    changes, only_in_a, only_in_b = difflib.diff_file_trees(tmp_path / "A", tmp_path / "B")
+    changes, only_in_a, only_in_b = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
 
     assert not changes
 
@@ -450,7 +450,7 @@ def test_diff_file_trees_with_pure_renames(tmp_path: Path):
         },
     )
 
-    changes, only_in_a, only_in_b = difflib.diff_file_trees(tmp_path / "A", tmp_path / "B")
+    changes, only_in_a, only_in_b = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
 
     # Files with identical content but different paths are treated as pure renames.
     # They are paired and therefore do not remain unmatched.
@@ -528,10 +528,10 @@ def test_diff_file_trees_pairs_similar_renamed_files(tmp_path: Path):
         },
     )
 
-    changes, only_in_a, only_in_b = difflib.diff_file_trees(tmp_path / "A", tmp_path / "B")
+    changes, only_in_a, only_in_b = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
 
     assert set(changes) == {
-        difflib.FileChange(
+        file_diff.FileChange(
             path=Path("scripts/old_name.pcode"),
             changed=1,
             path_new=Path("scripts/new_name.pcode"),
@@ -628,12 +628,12 @@ def test_diff_file_trees_pairs_best_similar_rename_candidate(tmp_path: Path):
         },
     )
 
-    changes, only_in_a, only_in_b = difflib.diff_file_trees(tmp_path / "A", tmp_path / "B")
+    changes, only_in_a, only_in_b = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
 
     # Both candidate files are similar enough to be comparable, but only the closest
     # content match should be paired with the source block.
     assert set(changes) == {
-        difflib.FileChange(
+        file_diff.FileChange(
             path=Path("scripts/source_block.pcode"),
             changed=1,
             path_new=Path("scripts/renamed_best_candidate.pcode"),
@@ -731,7 +731,7 @@ def test_diff_file_trees_does_not_pair_renamed_files_below_similarity_threshold(
         },
     )
 
-    changes, only_in_a, only_in_b = difflib.diff_file_trees(tmp_path / "A", tmp_path / "B")
+    changes, only_in_a, only_in_b = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
 
     # Different paths + below-threshold similarity: both candidate pairs must stay unmatched.
     # The "high-similarity" pair still stays below threshold:
@@ -782,14 +782,14 @@ def test_diff_file_trees_with_include_paths_filter(tmp_path: Path):
         },
     )
 
-    changes, only_in_a, only_in_b = difflib.diff_file_trees(
+    changes, only_in_a, only_in_b = file_diff.diff_file_trees(
         tmp_path / "A",
         tmp_path / "B",
         include_paths={Path("keep")},
     )
 
     assert set(changes) == {
-        difflib.FileChange(
+        file_diff.FileChange(
             path=Path("keep/changed.pcode"),
             changed=1,
             path_new=None,
@@ -823,7 +823,7 @@ def test_diff_file_trees_hash_pairing_with_unequal_counts(tmp_path: Path):
         },
     )
 
-    changes, only_in_a, only_in_b = difflib.diff_file_trees(tmp_path / "A", tmp_path / "B")
+    changes, only_in_a, only_in_b = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
 
     # There are multiple possible pairing, but only 2 targets in tree B, so one file will
     # remain unmatched in A.
@@ -839,18 +839,18 @@ def test_diff_file_trees_hash_pairing_with_unequal_counts(tmp_path: Path):
 
 
 def test_format_path_rename_git_style_edge_cases():
-    assert difflib.format_path_rename_git_style(Path("a/b.txt"), Path("c/d.txt")) == "a/b.txt => c/d.txt"
+    assert file_diff.format_path_rename_git_style(Path("a/b.txt"), Path("c/d.txt")) == "a/b.txt => c/d.txt"
 
-    assert difflib.format_path_rename_git_style(Path("foo/bar"), Path("foo/bar/baz")) == "foo/{bar => bar/baz}"
+    assert file_diff.format_path_rename_git_style(Path("foo/bar"), Path("foo/bar/baz")) == "foo/{bar => bar/baz}"
 
-    assert difflib.format_path_rename_git_style(Path("foo/bar/baz"), Path("bar/baz")) == "{foo/bar => bar}/baz"
+    assert file_diff.format_path_rename_git_style(Path("foo/bar/baz"), Path("bar/baz")) == "{foo/bar => bar}/baz"
 
     assert (
-        difflib.format_path_rename_git_style(
+        file_diff.format_path_rename_git_style(
             Path("qsdfsdf/pppp/yap/sdfdf/debo.txt"),
             Path("qsdfsdf/pppp/yap/sdfdf/pipi/yyy.txt"),
         )
         == "qsdfsdf/pppp/yap/sdfdf/{debo.txt => pipi/yyy.txt}"
     )
 
-    assert difflib.format_path_rename_git_style(Path("unchanged/path.txt"), None) == "unchanged/path.txt"
+    assert file_diff.format_path_rename_git_style(Path("unchanged/path.txt"), None) == "unchanged/path.txt"

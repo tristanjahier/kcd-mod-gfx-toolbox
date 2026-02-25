@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from typing import Annotated, Callable, Iterable
 import typer
 from .cli_extract import extraction_cache_key, resolve_ffdec, extract_gfx_contents
-from .lib.avm1_pcode_normalization import NormalizationStats, normalize_file
-from .lib.diff import FileChange, diff_file_trees, diff_file_trees_basic
-from .lib.util import AnsiColor, ensure_empty_dir, print_error, get_temp_dir
+from .avm1_pcode_normalization import NormalizationStats, normalize_file
+from .file_diff import FileChange, diff_file_trees, diff_file_trees_basic
+from .utils import AnsiColor, ensure_empty_dir, print_error, get_temp_dir
 from pathlib import Path
 import shutil
 import subprocess

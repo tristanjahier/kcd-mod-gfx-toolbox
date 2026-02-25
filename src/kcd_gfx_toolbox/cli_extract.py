@@ -6,7 +6,7 @@ import shutil
 import subprocess
 from typing import Annotated
 import typer
-from .lib.util import AnsiColor, ensure_empty_dir, get_temp_dir, print_error, sha256_str
+from .utils import AnsiColor, ensure_empty_dir, get_temp_dir, print_error, sha256_str
 
 
 def resolve_ffdec(arg: Path | None) -> Path:

@@ -1,7 +1,7 @@
 from pathlib import Path
 import re
 from dataclasses import dataclass
-from .util import safe_filename
+from .utils import safe_filename
 
 WORD_TOKEN = r"[a-zA-Z_][a-zA-Z\d_]*"
 LABEL_PREFIXED_LINE_RE = re.compile(rf"^\s*(?P<prefix>(?P<label>{WORD_TOKEN})\s*:)\s*(?P<rest>.*)$")
