@@ -300,7 +300,7 @@ def command(
         try:
             extract_gfx_contents(ffdec_path, file_a, extraction_dir_a)
         except subprocess.CalledProcessError as e:
-            print_error(f"ffdec-cli.exe failed with code {e.returncode}:")
+            print_error(f"ffdec failed with code {e.returncode}:")
             if e.stderr:
                 print_error(e.stderr)
             raise typer.Exit(code=1)
@@ -323,7 +323,7 @@ def command(
         try:
             extract_gfx_contents(ffdec_path, file_b, extraction_dir_b)
         except subprocess.CalledProcessError as e:
-            print_error(f"ffdec-cli.exe failed with code {e.returncode}:")
+            print_error(f"ffdec failed with code {e.returncode}:")
             if e.stderr:
                 print_error(e.stderr)
             raise typer.Exit(code=1)

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from pathlib import Path
+import platform
 import shutil
 import subprocess
 from typing import Annotated
@@ -13,10 +14,13 @@ def resolve_ffdec(arg: Path | None) -> Path:
 
     if ffdec_path is None:
         # If nothing was provided as an argument, we try to auto-discover it (via PATH).
-        found_path = shutil.which("ffdec-cli") or shutil.which("ffdec-cli.exe")
+        if platform.system().lower() == "windows":
+            found_path = shutil.which("ffdec-cli") or shutil.which("ffdec-cli.exe")
+        else:
+            found_path = shutil.which("ffdec") or shutil.which("ffdec.sh")
         if found_path:
             return Path(found_path)
-        raise FileNotFoundError("Unable to automatically resolve the path to ffdec-cli.")
+        raise FileNotFoundError("Unable to automatically resolve the path to ffdec.")
     else:
         # If a path was provided, we just need to validate it.
         ffdec_path = ffdec_path.resolve()
@@ -85,7 +89,7 @@ def command(
     try:
         extract_gfx_contents(ffdec_path, input_file, output_dir)
     except subprocess.CalledProcessError as e:
-        print_error(f"ffdec-cli.exe failed with code {e.returncode}:")
+        print_error(f"ffdec failed with code {e.returncode}:")
         if e.stderr:
             print_error(e.stderr)
         raise typer.Exit(code=1)
