@@ -10,10 +10,7 @@ This repository contains a small Python CLI toolkit to compare two `.gfx` files 
 
 Python 3.11+.
 
-JPEXS Free Flash Decompiler, in particular the `ffdec` binary (`ffdec-cli.exe` on Windows). Download it here: https://github.com/jindrapetrik/jpexs-decompiler. Any version that supports:
-```sh
-ffdec -format script:pcode -export script output_dir myfile.gfx
-```
+JPEXS Free Flash Decompiler, in particular the `ffdec` binary (`ffdec-cli.exe` on Windows). Tested with version 25. Download it here: https://github.com/jindrapetrik/jpexs-decompiler.
 
 ## Usage
 
