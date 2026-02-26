@@ -28,6 +28,13 @@ def print_error(err: str | BaseException):
     print(f"{AnsiColor.RED}ERROR: {err}{AnsiColor.RESET}", file=sys.stderr)
 
 
+def print_warning(message: str | BaseException):
+    """
+    Print a warning message (or exception) in the console.
+    """
+    print(f"{AnsiColor.YELLOW}WARNING: {message}{AnsiColor.RESET}", file=sys.stderr)
+
+
 def list_tree_files(path: Path) -> set[Path]:
     """
     Return a set of all file paths in a directory subtree, relative to the root.

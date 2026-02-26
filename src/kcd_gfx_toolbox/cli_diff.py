@@ -7,7 +7,7 @@ import typer
 from .extraction import extract_gfx_contents, extraction_cache_key, resolve_ffdec
 from .avm1_pcode_normalization import NormalizationStats, normalize_file
 from .file_diff import FileChange, diff_file_trees, diff_file_trees_basic
-from .utils import AnsiColor, ensure_empty_dir, print_error, get_temp_dir
+from .utils import AnsiColor, ensure_empty_dir, print_error, get_temp_dir, print_warning
 from pathlib import Path
 import shutil
 import subprocess
@@ -220,6 +220,64 @@ def unfold_script_tree_in_table(
             table.add_row(block_text, *block_attr)
 
 
+def normalize_script(script_src: Path, output_dir: Path, read_cache: bool) -> NormalizationStats:
+    """
+    Perform normalization for a given script, or read the cached data if applicable.
+    """
+    if read_cache:
+        try:
+            return collect_normalization_stats_from_cache(output_dir)
+        except FileNotFoundError:
+            print_warning(f"Normalization cache missing: {output_dir}.")
+            # Not a fatal error.
+
+    ensure_empty_dir(output_dir)
+
+    try:
+        return normalize_file(script_src, output_dir)
+    except Exception as e:
+        print_error(f"Normalization failed: {script_src}")
+        print_error(e)
+        raise typer.Exit(code=1)
+
+
+def collect_normalization_stats_from_cache(blocks_dir: Path) -> NormalizationStats:
+    """
+    Compute normalization stats from an existing normalized-blocks directory.
+    """
+    if not blocks_dir.is_dir():
+        raise FileNotFoundError(f"Missing normalization cache directory: {blocks_dir}.")
+
+    total_blocks = named_blocks = anonymous_blocks = toplevel_blocks = 0
+
+    for block_file in blocks_dir.iterdir():
+        if not block_file.is_file() or block_file.suffix.lower() != ".pcode":
+            continue
+
+        total_blocks += 1
+
+        stem = block_file.stem
+        first_underscore_idx = stem.find("_")
+        block_name = stem[first_underscore_idx + 1 :] if first_underscore_idx != -1 else stem
+
+        if block_name.startswith("__toplevel"):
+            toplevel_blocks += 1
+        elif block_name.startswith("__anonymous"):
+            anonymous_blocks += 1
+        else:
+            named_blocks += 1
+
+    if total_blocks == 0:
+        raise FileNotFoundError(f"Normalization cache directory is empty: {blocks_dir}.")
+
+    return NormalizationStats(
+        total_blocks=total_blocks,
+        named_blocks=named_blocks,
+        anonymous_blocks=anonymous_blocks,
+        toplevel_blocks=toplevel_blocks,
+    )
+
+
 def command(
     file_a: Annotated[Path, typer.Argument(help="The left (A) file of the comparison.")],
     file_b: Annotated[Path, typer.Argument(help="The right (B) file of the comparison.")],
@@ -234,6 +292,13 @@ def command(
             help="Use extraction cache (default). Disable to force re-extraction.",
         ),
     ] = True,
+    use_normalization_cache: Annotated[
+        bool,
+        typer.Option(
+            "--cache-normalization/--no-normalization-cache",
+            help="Enable to reuse cached normalized blocks. Disable to force re-normalization.",
+        ),
+    ] = False,
 ):
     """
     Compare scripts between two GFx files to surface meaningful changes through normalization.
@@ -374,6 +439,12 @@ def command(
     normalization_dir_a = (temp_dir / f"{file_a.stem}_{file_a_path_hash}" / "normalized").resolve()
     normalization_dir_b = (temp_dir / f"{file_b.stem}_{file_b_path_hash}" / "normalized").resolve()
 
+    # We should only try to read the cache if:
+    #   1. it is the expected behaviour for the command.
+    #   2. normalization has already been cached for that file.
+    should_read_cache_file_a = use_normalization_cache and normalization_dir_a.is_dir()
+    should_read_cache_file_b = use_normalization_cache and normalization_dir_b.is_dir()
+
     normalization_dir_a.mkdir(parents=True, exist_ok=True)
     normalization_dir_b.mkdir(parents=True, exist_ok=True)
 
@@ -390,25 +461,11 @@ def command(
         normalized_blocks_dir_a = normalization_dir_a / script_path
         normalized_blocks_dir_b = normalization_dir_b / script_path
 
-        ensure_empty_dir(normalized_blocks_dir_a)
+        norm_stats_a = normalize_script(src_a, normalized_blocks_dir_a, should_read_cache_file_a)
+        normalization_results_a.append((script_path, norm_stats_a))
 
-        try:
-            norm_stats_a = normalize_file(src_a, normalized_blocks_dir_a)
-            normalization_results_a.append((script_path, norm_stats_a))
-        except Exception as e:
-            print_error(f"Normalization failed: {src_a}")
-            print_error(e)
-            raise typer.Exit(code=1)
-
-        ensure_empty_dir(normalized_blocks_dir_b)
-
-        try:
-            norm_stats_b = normalize_file(src_b, normalized_blocks_dir_b)
-            normalization_results_b.append((script_path, norm_stats_b))
-        except Exception as e:
-            print_error(f"Normalization failed: {src_b}")
-            print_error(e)
-            raise typer.Exit(code=1)
+        norm_stats_b = normalize_script(src_b, normalized_blocks_dir_b, should_read_cache_file_b)
+        normalization_results_b.append((script_path, norm_stats_b))
 
     print(f"{file_a}:")
 
