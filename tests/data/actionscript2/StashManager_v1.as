@@ -24,18 +24,18 @@ class StashManager
 
     function StashManager()
     {
-        this["BoundVariantA"] = function(v)
+        this["BoundVariantA"] = function (v)
         {
             return v + 1;
         };
 
         var self = this;
-        self["BoundVariantB"] = function(v)
+        self["BoundVariantB"] = function (v)
         {
             return v + 1;
         };
 
-        StashManager.prototype["BoundVariantC"] = function(v)
+        StashManager.prototype["BoundVariantC"] = function (v)
         {
             return v + 1;
         };
@@ -49,8 +49,7 @@ class StashManager
         keys.push("type");
         opts.push(Array.NUMERIC);
 
-        switch(this.m_CurrentSort)
-        {
+        switch (this.m_CurrentSort) {
             case this.E_IS_Count:
                 keys.push("count");
                 opts.push(Array.NUMERIC);
@@ -92,8 +91,7 @@ class StashManager
         var available;
         var take;
 
-        while(i < slots.length)
-        {
+        while (i < slots.length) {
             slot = this.GetSlot(slots[i], this.m_DisplayedData[index].type);
             info = slot.GetInfo();
             available = info.GetCount();
@@ -106,29 +104,23 @@ class StashManager
             });
 
             count = count - take;
-            if(count <= 0)
-            {
+            if (count <= 0) {
                 break;
             }
 
             i++;
         }
 
-        if(remove)
-        {
+        if (remove) {
             i = 0;
-            while(i < out.length)
-            {
+            while (i < out.length) {
                 slot = this.GetSlot(out[i].slotId, out[i].type);
                 info = slot.GetInfo();
                 available = info.GetCount();
 
-                if(out[i].count < available)
-                {
+                if (out[i].count < available) {
                     info.RemoveCount(out[i].count);
-                }
-                else
-                {
+                } else {
                     this.RemoveSlot(out[i].slotId, 0, out[i].type);
                 }
                 i = i + 1;
@@ -140,31 +132,24 @@ class StashManager
 
     function RemoveSlot(slotIndex, amount, type)
     {
-        if(amount == undefined)
-        {
+        if (amount == undefined) {
             amount = 0;
         }
-        if(!type)
-        {
+        if (!type) {
             type = this.UNDEFINED_SLOT;
         }
 
         var slot = this.m_SlotsObject[slotIndex];
         var info;
 
-        if(slot && (type == this.UNDEFINED_SLOT || slot.GetType() == type))
-        {
+        if (slot && (type == this.UNDEFINED_SLOT || slot.GetType() == type)) {
             info = slot.GetInfo();
-            if(amount > 0 && info.GetCount() > amount)
-            {
+            if (amount > 0 && info.GetCount() > amount) {
                 info.RemoveCount(amount);
-            }
-            else
-            {
+            } else {
                 delete this.m_SlotsObject[slotIndex];
                 this.m_SlotsSize -= 1;
-                if(info.GetCategory() == this.E_IC_Money)
-                {
+                if (info.GetCategory() == this.E_IC_Money) {
                     this.RemoveMoneySlot(slot);
                 }
             }
@@ -187,21 +172,15 @@ class StashManager
         var left;
         var right;
 
-        if(!(x < y))
-        {
+        if (!(x < y)) {
             left = true;
-        }
-        else
-        {
+        } else {
             left = false;
         }
 
-        if(x >= y)
-        {
+        if (x >= y) {
             right = true;
-        }
-        else
-        {
+        } else {
             right = false;
         }
 
@@ -213,12 +192,9 @@ class StashManager
         var a = v ? t : f;
         var b;
 
-        if(v)
-        {
+        if (v) {
             b = t;
-        }
-        else
-        {
+        } else {
             b = f;
         }
 
