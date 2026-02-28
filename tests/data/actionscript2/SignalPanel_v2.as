@@ -86,4 +86,13 @@ class SignalPanel
         this.m_Entries = new Array();
         this.m_LastMessage = "";
     }
+
+    function PeekLastEntryText()
+    {
+        if (this.m_Entries.length == 0) {
+            return "";
+        }
+
+        return this.m_Entries[this.m_Entries.length - 1].text;
+    }
 }

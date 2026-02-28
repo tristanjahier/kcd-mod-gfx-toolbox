@@ -47,3 +47,8 @@ function ShouldWarnLowStamina(stamina)
 
     return false;
 }
+
+function GetHintStateLabel()
+{
+    return g_ShowHints ? "Hints ON" : "Hints OFF";
+}

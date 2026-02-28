@@ -84,4 +84,10 @@ class SignalPanel
             }
         );
     }
+
+    function ResetMessageLog()
+    {
+        this.m_LastMessage = "";
+        return this.m_LastMessage;
+    }
 }

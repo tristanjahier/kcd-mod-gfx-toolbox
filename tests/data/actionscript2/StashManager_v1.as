@@ -226,4 +226,9 @@ class StashManager
     function RemoveMoneySlot(slot)
     {
     }
+
+    function CountTrackedSlots()
+    {
+        return this.m_SlotsSize;
+    }
 }
