@@ -80,13 +80,14 @@ def diff_file_trees(
     dir1: Path,
     dir2: Path,
     include_paths: set[Path] | None = None,
-) -> tuple[list[FileChange], list[Path], list[Path]]:
+) -> tuple[list[FileChange], list[Path], list[Path], list[Path]]:
     """
     Perform a diff between two directories and their subtrees.
     Return a tuple of:
         1. file change stats for common file paths and paired moved/renamed paths
         2. file paths only present in directory 1
         3. file paths only present in directory 2
+        4. equal files (same path, same content)
     """
     dir1_files = list_tree_files(dir1)
     dir2_files = list_tree_files(dir2)
@@ -103,12 +104,15 @@ def diff_file_trees(
 
     changes: list[FileChange] = []
 
+    equals: list[Path] = []
+
     for rel_path in common:
         file1 = dir1 / rel_path
         file2 = dir2 / rel_path
 
-        # Ignore identical files.
+        # Put aside identical files.
         if file1.stat().st_size == file2.stat().st_size and sha256_file(file1) == sha256_file(file2):
+            equals.append(rel_path)
             continue
 
         file1_lines = read_file_lines(file1)
@@ -143,12 +147,14 @@ def diff_file_trees(
         # number of identical files (by hash) on each side.
         # It would probably be better for reporting to pair the "closest" paths.
         paired_count = min(len(paths_in_dir1), len(paths_in_dir2))
+        paired_exact_matches = list(zip(paths_in_dir1[:paired_count], paths_in_dir2[:paired_count]))
 
-        for p in paths_in_dir1[:paired_count]:
-            unmatched_dir1.discard(p)
+        for p1, p2 in paired_exact_matches:
+            unmatched_dir1.discard(p1)
+            unmatched_dir2.discard(p2)
 
-        for p in paths_in_dir2[:paired_count]:
-            unmatched_dir2.discard(p)
+            # Pure rename change.
+            changes.append(FileChange(path=p1, path_new=p2, changed=0))
 
     # Finally, try to pair files with different paths and whose contents are
     # not identical but highly similar and therefore comparable (worth a diff).
@@ -208,7 +214,7 @@ def diff_file_trees(
         if changed > 0:
             changes.append(FileChange(path=path_in_dir1, changed=changed, path_new=best_candidate))
 
-    return changes, sorted(unmatched_dir1), sorted(unmatched_dir2)
+    return changes, sorted(unmatched_dir1), sorted(unmatched_dir2), equals
 
 
 def format_path_rename_git_style(path_a: Path, path_b: Path | None) -> str:

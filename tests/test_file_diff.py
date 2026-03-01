@@ -349,7 +349,7 @@ def test_diff_file_trees_with_no_differences(tmp_path: Path):
         },
     )
 
-    changes, only_in_a, only_in_b = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
+    changes, only_in_a, only_in_b, _ = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
 
     assert not changes
     assert not only_in_a
@@ -382,7 +382,7 @@ def test_diff_file_trees_with_differences_but_mirrored_paths(tmp_path: Path):
         },
     )
 
-    changes, only_in_a, only_in_b = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
+    changes, only_in_a, only_in_b, _ = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
 
     assert set(changes) == {
         file_diff.FileChange(path=Path("blabla.txt"), changed=1, path_new=None),
@@ -414,7 +414,7 @@ def test_diff_file_trees_with_only_unmatched_paths(tmp_path: Path):
         },
     )
 
-    changes, only_in_a, only_in_b = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
+    changes, only_in_a, only_in_b, _ = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
 
     assert not changes
 
@@ -450,13 +450,17 @@ def test_diff_file_trees_with_pure_renames(tmp_path: Path):
         },
     )
 
-    changes, only_in_a, only_in_b = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
+    changes, only_in_a, only_in_b, equals = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
 
     # Files with identical content but different paths are treated as pure renames.
     # They are paired and therefore do not remain unmatched.
-    assert not changes
+    assert set(changes) == {
+        file_diff.FileChange(path=Path("foo/a.pcode"), changed=0, path_new=Path("bar/a.pcode")),
+        file_diff.FileChange(path=Path("foo/b.pcode"), changed=0, path_new=Path("bar/c.pcode")),
+    }
     assert not only_in_a
     assert not only_in_b
+    assert not equals
 
 
 def test_diff_file_trees_pairs_similar_renamed_files(tmp_path: Path):
@@ -528,7 +532,7 @@ def test_diff_file_trees_pairs_similar_renamed_files(tmp_path: Path):
         },
     )
 
-    changes, only_in_a, only_in_b = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
+    changes, only_in_a, only_in_b, _ = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
 
     assert set(changes) == {
         file_diff.FileChange(
@@ -628,7 +632,7 @@ def test_diff_file_trees_pairs_best_similar_rename_candidate(tmp_path: Path):
         },
     )
 
-    changes, only_in_a, only_in_b = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
+    changes, only_in_a, only_in_b, _ = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
 
     # Both candidate files are similar enough to be comparable, but only the closest
     # content match should be paired with the source block.
@@ -731,7 +735,7 @@ def test_diff_file_trees_does_not_pair_renamed_files_below_similarity_threshold(
         },
     )
 
-    changes, only_in_a, only_in_b = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
+    changes, only_in_a, only_in_b, _ = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
 
     # Different paths + below-threshold similarity: both candidate pairs must stay unmatched.
     # The "high-similarity" pair still stays below threshold:
@@ -782,7 +786,7 @@ def test_diff_file_trees_with_include_paths_filter(tmp_path: Path):
         },
     )
 
-    changes, only_in_a, only_in_b = file_diff.diff_file_trees(
+    changes, only_in_a, only_in_b, _ = file_diff.diff_file_trees(
         tmp_path / "A",
         tmp_path / "B",
         include_paths={Path("keep")},
@@ -823,18 +827,66 @@ def test_diff_file_trees_hash_pairing_with_unequal_counts(tmp_path: Path):
         },
     )
 
-    changes, only_in_a, only_in_b = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
+    changes, only_in_a, only_in_b, _ = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
 
     # There are multiple possible pairing, but only 2 targets in tree B, so one file will
     # remain unmatched in A.
-    assert not changes
-    assert not only_in_b
+    assert len(changes) == 2
+    assert {ch.path for ch in changes}.isdisjoint(only_in_a)
+
+    assert {ch.path_new for ch in changes} == {
+        Path("scripts/new_subdir/clone_b1.pcode"),
+        Path("scripts/new_subdir/clone_b2.pcode"),
+    }
 
     assert len(only_in_a) == 1
     assert only_in_a[0] in {
         Path("scripts/clone_a1.pcode"),
         Path("scripts/clone_a2.pcode"),
         Path("scripts/clone_a3.pcode"),
+    }
+
+    assert not only_in_b
+
+
+def test_diff_file_trees_reports_equal_paths_and_pure_renames_separately(tmp_path: Path):
+    _create_fake_file_tree(
+        tmp_path,
+        {
+            "A/": None,
+            "A/common/": None,
+            "A/common/same_path.pcode": "same payload",
+            "A/scripts/": None,
+            "A/scripts/renamed_but_equal_in_a.pcode": "exactly identical payload",
+        },
+    )
+
+    _create_fake_file_tree(
+        tmp_path,
+        {
+            "B/": None,
+            "B/common/": None,
+            "B/common/same_path.pcode": "same payload",
+            "B/scripts/": None,
+            "B/scripts/renamed_but_equal_in_b.pcode": "exactly identical payload",
+        },
+    )
+
+    changes, only_in_a, only_in_b, equals = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
+
+    assert set(changes) == {
+        file_diff.FileChange(
+            path=Path("scripts/renamed_but_equal_in_a.pcode"),
+            changed=0,
+            path_new=Path("scripts/renamed_but_equal_in_b.pcode"),
+        )
+    }
+
+    assert not only_in_a
+    assert not only_in_b
+
+    assert set(equals) == {
+        Path("common/same_path.pcode"),
     }
 
 

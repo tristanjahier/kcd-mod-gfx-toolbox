@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
 from __future__ import annotations
-from dataclasses import dataclass
 from typing import Annotated, Callable, Iterable
 import typer
+from .gfx_diff import GfxScript, diff_normalized_script_trees
 from .extraction import extract_gfx_contents, extraction_cache_key, resolve_ffdec
 from .avm1_pcode_normalization import NormalizationStats, normalize_file
-from .file_diff import FileChange, diff_file_trees, diff_file_trees_basic
+from .file_diff import diff_file_trees_basic
 from .utils import AnsiColor, ensure_empty_dir, print_error, get_temp_dir, print_warning
 from pathlib import Path
 import shutil
@@ -16,129 +16,7 @@ from rich.table import Table
 from rich import box
 
 
-class GfxDiffSet:
-    """
-    Container for diff information across command steps.
-    """
-
-    def __init__(self):
-        self.differing_scripts: set[Path] = set()
-        self.unmatched_a_scripts: set[Path] = set()
-        self.unmatched_b_scripts: set[Path] = set()
-        self.differing_scripts_details: dict[Path, ScriptDiffSet] = {}
-
-    def has_differing_scripts(self) -> bool:
-        return bool(self.differing_scripts)
-
-    def has_unmatched_scripts_on_side_a(self) -> bool:
-        return bool(self.unmatched_a_scripts)
-
-    def has_unmatched_scripts_on_side_b(self) -> bool:
-        return bool(self.unmatched_b_scripts)
-
-    def is_empty(self) -> bool:
-        return (
-            not self.has_differing_scripts()
-            and not self.has_unmatched_scripts_on_side_a()
-            and not self.has_unmatched_scripts_on_side_b()
-        )
-
-    def populate_script_details_from_file_tree_diff(
-        self,
-        changes: list[FileChange],
-        only_in_tree_a: list[Path],
-        only_in_tree_b: list[Path],
-    ):
-        def fail_if_unknown_script(script_path: Path):
-            if script_path not in self.differing_scripts:
-                raise ValueError(f"Script path '{script_path}' is unknown.")
-
-        for fch in changes:
-            script_path = fch.path.parent
-            fail_if_unknown_script(script_path)
-            self.differing_scripts_details.setdefault(script_path, ScriptDiffSet()).differing_blocks.add(
-                # Convert FileChange to ScriptBlockChange
-                ScriptBlockChange(
-                    name=fch.path.stem,
-                    changed=fch.changed,
-                    name_new=fch.path_new.stem if fch.path_new else None,
-                )
-            )
-
-        for path in only_in_tree_a:
-            script_path = path.parent
-            fail_if_unknown_script(script_path)
-            self.differing_scripts_details.setdefault(script_path, ScriptDiffSet()).unmatched_a_blocks.add(path.stem)
-
-        for path in only_in_tree_b:
-            script_path = path.parent
-            fail_if_unknown_script(script_path)
-            self.differing_scripts_details.setdefault(script_path, ScriptDiffSet()).unmatched_b_blocks.add(path.stem)
-
-    def get_scripts_with_block_changes(self) -> set[Path]:
-        return {scr for scr, det in self.differing_scripts_details.items() if det.has_differing_blocks()}
-
-    def get_scripts_with_unmatched_blocks_on_side_a(self) -> set[Path]:
-        return {scr for scr, det in self.differing_scripts_details.items() if det.has_unmatched_blocks_on_side_a()}
-
-    def get_scripts_with_unmatched_blocks_on_side_b(self) -> set[Path]:
-        return {scr for scr, det in self.differing_scripts_details.items() if det.has_unmatched_blocks_on_side_b()}
-
-    def get_scripts_with_unmatched_blocks(self) -> set[Path]:
-        return self.get_scripts_with_unmatched_blocks_on_side_a() | self.get_scripts_with_unmatched_blocks_on_side_b()
-
-    def __rich_repr__(self):
-        yield from self.__dict__.items()
-
-
-class ScriptDiffSet:
-    """
-    Block-level diff details for one script path.
-
-    It tracks changed blocks and blocks that exist only on side A or side B.
-    """
-
-    def __init__(self):
-        self.differing_blocks: set[ScriptBlockChange] = set()
-        self.unmatched_a_blocks: set[str] = set()
-        self.unmatched_b_blocks: set[str] = set()
-
-    def has_differing_blocks(self) -> bool:
-        return bool(self.differing_blocks)
-
-    def has_unmatched_blocks_on_side_a(self) -> bool:
-        return bool(self.unmatched_a_blocks)
-
-    def has_unmatched_blocks_on_side_b(self) -> bool:
-        return bool(self.unmatched_b_blocks)
-
-    def is_empty(self) -> bool:
-        return (
-            not self.has_differing_blocks()
-            and not self.has_unmatched_blocks_on_side_a()
-            and not self.has_unmatched_blocks_on_side_b()
-        )
-
-    def __rich_repr__(self):
-        yield from self.__dict__.items()
-
-
-@dataclass(frozen=True)
-class ScriptBlockChange:
-    """
-    One changed block entry within a script.
-
-    `name` is the block name on side A (or common name), `changed` is the
-    touched-line count, and `name_new` is the paired name on side B when a
-    rename pairing is detected.
-    """
-
-    name: str
-    changed: int
-    name_new: str | None = None
-
-
-def build_script_path_tree_rows(script_paths: set[Path]) -> list[tuple[str, Path | None, str]]:
+def build_script_path_tree_rows(scripts: set[GfxScript]) -> list[tuple[str, GfxScript | None, str]]:
     """
     Render script paths as a directory/file tree.
     Return tuples:
@@ -147,13 +25,16 @@ def build_script_path_tree_rows(script_paths: set[Path]) -> list[tuple[str, Path
         3. prefix to use for children rows under this node
     """
     tree: dict[str, dict] = {}
-    segments_to_script: dict[tuple[str, ...], Path] = {}
+    segments_to_script: dict[tuple[str, ...], GfxScript] = {}
 
-    for p in script_paths:
+    for script in scripts:
+        p = script.side_a_path or script.side_b_path
+        assert p is not None
+
         segments = p.parts
 
         # Build a lookup table for later.
-        segments_to_script[segments] = p
+        segments_to_script[segments] = script
 
         # Create the tree structure as a dict, where keys are path segments.
         node = tree
@@ -164,8 +45,8 @@ def build_script_path_tree_rows(script_paths: set[Path]) -> list[tuple[str, Path
         tree_node: dict[str, dict],
         prefix: str = "",
         path_prefix_segments: tuple[str, ...] = (),
-    ) -> list[tuple[str, Path | None, str]]:
-        rows: list[tuple[str, Path | None, str]] = []
+    ) -> list[tuple[str, GfxScript | None, str]]:
+        rows: list[tuple[str, GfxScript | None, str]] = []
         children = sorted(tree_node.keys())  # sort paths in alphabetical order.
 
         for i, child in enumerate(children):
@@ -176,7 +57,13 @@ def build_script_path_tree_rows(script_paths: set[Path]) -> list[tuple[str, Path
             if leaf_script is None:
                 child_text = f"{child}/"
             else:
-                child_text = f"[bold cyan]{child}[/bold cyan]"
+                if leaf_script.was_renamed():
+                    script_text = f"{leaf_script.side_a_path.name} => {leaf_script.side_b_path.name}"
+                elif leaf_script.side_b_path is None:
+                    script_text = leaf_script.side_a_path.name  # common not renamed or unmatched from side A
+                else:
+                    script_text = leaf_script.side_b_path.name  # unmatched from side B
+                child_text = f"[bold cyan]{script_text}[/bold cyan]"
 
             if not path_prefix_segments:
                 # Roots do not need a tree connector character.
@@ -198,24 +85,32 @@ def build_script_path_tree_rows(script_paths: set[Path]) -> list[tuple[str, Path
 
 
 def unfold_script_tree_in_table(
-    script_paths: set[Path],
+    scripts: set[GfxScript],
     table: Table,
-    get_block_rows: Callable[[Path], Iterable[tuple[RenderableType | None, ...]]],
+    get_block_rows: Callable[[GfxScript], Iterable[tuple[RenderableType | None, ...]]],
 ) -> None:
     """
     Append script paths and blocks as a tree to a Rich table.
     Script paths are sorted in alphabetical order.
     Append block rows to each leaf script using `get_block_rows`.
     """
-    tree_rows = build_script_path_tree_rows(script_paths)
+    tree_rows = build_script_path_tree_rows(scripts)
 
-    for row_text, script_path, leaf_prefix in tree_rows:
-        table.add_row(row_text, "", "")
-
-        if script_path is None:
+    for row_text, script, leaf_prefix in tree_rows:
+        if script is None:
+            table.add_row(row_text, "", "")
             continue  # continue unfolding the tree until we reached a script
 
-        for block_text, *block_attr in get_block_rows(script_path):
+        if script.side_a_path is not None and script.side_b_path is not None:
+            state = "[italic yellow]modified[/italic yellow]"
+        elif script.side_b_path is None:
+            state = "[italic red]deleted[/italic red]"  # unmatched on side A
+        else:
+            state = "[italic green]created[/italic green]"  # unmatched on side B
+
+        table.add_row(row_text, state, "")
+
+        for block_text, *block_attr in get_block_rows(script):
             block_text = f"{leaf_prefix}[bright_yellow]◈[/bright_yellow] {block_text}"
             table.add_row(block_text, *block_attr)
 
@@ -340,9 +235,6 @@ def command(
     )
     print(f"{AnsiColor.LIGHT_YELLOW}Using ffdec:{AnsiColor.RESET} {ffdec_path}")
 
-    # Create an object to carry the diff information across steps, updated progressively.
-    diffset = GfxDiffSet()
-
     # ================================================================
     # Step 1: extract contents from both files.
     # For that we use "JPEXS Free Flash Decompiler" aka ffdec.
@@ -400,40 +292,36 @@ def command(
 
     print(f"\n{AnsiColor.BLUE}» 2: Searching for file differences{AnsiColor.RESET}\n")
 
-    different, only_in_a, only_in_b = diff_file_trees_basic(extraction_dir_a, extraction_dir_b)
+    common, only_in_a, only_in_b = diff_file_trees_basic(extraction_dir_a, extraction_dir_b)
 
-    # Strip ".pcode" extension as we want to reflect the inner GFx structure, not the extraction dir.
-    diffset.differing_scripts = {p.with_suffix("") for p in different}
-    diffset.unmatched_a_scripts = {p.with_suffix("") for p in only_in_a}
-    diffset.unmatched_b_scripts = {p.with_suffix("") for p in only_in_b}
+    common_path_scripts: set[Path] = {p.with_suffix("") for p in common}
+    unmatched_a_scripts: set[Path] = {p.with_suffix("") for p in only_in_a}
+    unmatched_b_scripts: set[Path] = {p.with_suffix("") for p in only_in_b}
 
-    if diffset.is_empty():
+    if not common_path_scripts and not unmatched_a_scripts and not unmatched_b_scripts:
         print(f"{AnsiColor.GREEN}Both files are identical.{AnsiColor.RESET}")
         return
 
-    if diffset.has_unmatched_scripts_on_side_a():
+    if unmatched_a_scripts:
         print(f"Scripts only present in {file_a}:")
-        for path in sorted(diffset.unmatched_a_scripts):
+        for path in sorted(unmatched_a_scripts):
             print(f"{path}")
         print()
 
-    if diffset.has_unmatched_scripts_on_side_b():
+    if unmatched_b_scripts:
         print(f"Scripts only present in {file_b}:")
-        for path in sorted(diffset.unmatched_b_scripts):
+        for path in sorted(unmatched_b_scripts):
             print(f"{path}")
         print()
 
-    if diffset.has_differing_scripts():
+    if common_path_scripts:
         print("Common scripts that differ:")
-        for path in sorted(diffset.differing_scripts):
+        for path in sorted(common_path_scripts):
             print(f"{path}")
-    else:
-        console.print("[yellow]Common scripts are identical. Comparing unmatched scripts is not supported.[/yellow]")
-        return
 
     # ================================================================
-    # Step 3: normalize the differing scripts, to remove the noise in p-codes due to decompilation,
-    # and to highlight the real logical differences. The normalization is done at a "block level".
+    # Step 3: normalize the differing scripts (common and unmatched), to remove the noise in p-codes due to
+    # decompilation, and to highlight the real logical differences. The normalization is done at a "block level".
     # Files are split into blocks (top level scope, functions).
 
     normalization_dir_a = (temp_dir / f"{file_a.stem}_{file_a_path_hash}" / "normalized").resolve()
@@ -453,19 +341,17 @@ def command(
     normalization_results_a: list[tuple[Path, NormalizationStats]] = []
     normalization_results_b: list[tuple[Path, NormalizationStats]] = []
 
-    for script_path in diffset.differing_scripts:
-        src_a = (extraction_dir_a / script_path).with_suffix(".pcode")
-        src_b = (extraction_dir_b / script_path).with_suffix(".pcode")
+    # Preserve tree structure and transform file "XXXX.pcode" into directory "XXXX/".
 
-        # Preserve tree structure and transform file "XXXX.pcode" into directory "XXXX/".
-        normalized_blocks_dir_a = normalization_dir_a / script_path
-        normalized_blocks_dir_b = normalization_dir_b / script_path
+    for script_path in common_path_scripts | unmatched_a_scripts:
+        full_path = (extraction_dir_a / script_path).with_suffix(".pcode")
+        norm_stats = normalize_script(full_path, normalization_dir_a / script_path, should_read_cache_file_a)
+        normalization_results_a.append((script_path, norm_stats))
 
-        norm_stats_a = normalize_script(src_a, normalized_blocks_dir_a, should_read_cache_file_a)
-        normalization_results_a.append((script_path, norm_stats_a))
-
-        norm_stats_b = normalize_script(src_b, normalized_blocks_dir_b, should_read_cache_file_b)
-        normalization_results_b.append((script_path, norm_stats_b))
+    for script_path in common_path_scripts | unmatched_b_scripts:
+        full_path = (extraction_dir_b / script_path).with_suffix(".pcode")
+        norm_stats = normalize_script(full_path, normalization_dir_b / script_path, should_read_cache_file_b)
+        normalization_results_b.append((script_path, norm_stats))
 
     print(f"{file_a}:")
 
@@ -512,29 +398,36 @@ def command(
 
     print(f"\n{AnsiColor.BLUE}» 4: Comparison of normalized code{AnsiColor.RESET}\n")
 
-    changes, only_in_a, only_in_b = diff_file_trees(
-        normalization_dir_a, normalization_dir_b, include_paths=diffset.differing_scripts
+    diffset = diff_normalized_script_trees(
+        common_path_scripts | unmatched_a_scripts,
+        common_path_scripts | unmatched_b_scripts,
+        normalization_dir_a,
+        normalization_dir_b,
     )
 
-    if not changes and not only_in_a and not only_in_b:
+    if diffset.is_empty():
         print(
             f"{AnsiColor.GREEN}Normalized trees are identical. The difference might be decompilation noise only.{AnsiColor.RESET}"
         )
         return
 
-    # Organize file tree diffs by script origin.
-    diffset.populate_script_details_from_file_tree_diff(changes, only_in_a, only_in_b)
-
-    changed_count = len(changes)
-    deleted_count = len(only_in_a)
-    created_count = len(only_in_b)
-    changed_lines_total = sum(ch.changed for ch in changes)
-
     console.print(
         f"Summary: "
-        f"[yellow]{changed_count} modified[/yellow], "
-        f"[red]{deleted_count} deleted[/red], "
-        f"[green]{created_count} created[/green] "
+        f"[yellow]{len(diffset.get_scripts_with_differing_blocks())} scripts modified[/yellow], "
+        f"[red]{len(diffset.unmatched_a_scripts)} scripts deleted[/red], "
+        f"[green]{len(diffset.unmatched_b_scripts)} scripts created[/green]"
+    )
+
+    changed_count = diffset.get_modified_block_count()
+    deleted_count = diffset.get_unmatched_block_side_a_count()
+    created_count = diffset.get_unmatched_block_side_b_count()
+    changed_lines_total = diffset.get_modified_block_line_count()
+
+    console.print(
+        f"➥ Within modified scripts: "
+        f"[yellow]{changed_count} blocks modified[/yellow], "
+        f"[red]{deleted_count} blocks deleted[/red], "
+        f"[green]{created_count} blocks created[/green] "
         f"({changed_lines_total} changed lines)\n"
     )
 
@@ -543,39 +436,42 @@ def command(
     diff_table.add_column("State")
     diff_table.add_column("Lines changed", justify="right")
 
-    if changes:
-        diff_table.add_section()
+    diff_table.add_section()
 
-        def _get_modified_block_rows(script: Path):
-            block_change_rows: list[tuple[str, int]] = []
+    def _get_modified_block_rows(script: GfxScript):
+        block_change_rows: list[tuple[str, int]] = []
 
-            for ch in diffset.differing_scripts_details[script].differing_blocks:
-                display_text = f"{ch.name} [bright_yellow]=>[/bright_yellow] {ch.name_new}" if ch.name_new else ch.name
-                block_change_rows.append((display_text, ch.changed))
+        if script not in diffset.paired_scripts_block_diffs:
+            return []
 
-            # Sort by largest changes first, then by name.
-            block_change_rows.sort(key=lambda row: (-row[1], row[0]))
+        for ch in diffset.paired_scripts_block_diffs[script].paired_blocks:
+            if ch.changed == 0:
+                continue  # ignore pure renames
+            display_text = (
+                f"{ch.side_a_name} [bright_yellow]=>[/bright_yellow] {ch.side_b_name}"
+                if ch.was_renamed()
+                else ch.side_a_name
+            )
+            block_change_rows.append((display_text, ch.changed))
 
-            for display_text, changed in block_change_rows:
-                yield (display_text, "[italic yellow]modified[/italic yellow]", str(changed))
+        # Sort by largest changes first, then by name.
+        block_change_rows.sort(key=lambda row: (-row[1], row[0]))
 
-        unfold_script_tree_in_table(diffset.get_scripts_with_block_changes(), diff_table, _get_modified_block_rows)
+        for display_text, changed in block_change_rows:
+            yield (display_text, "[italic yellow]modified[/italic yellow]", str(changed))
 
-    if only_in_a or only_in_b:
-        diff_table.add_section()
+        # Then display unmatched blocks.
+        unmatched_block_rows = []
 
-        def _get_unmatched_block_rows(script: Path):
-            unmatched_block_rows = []
+        for block in diffset.paired_scripts_block_diffs[script].unmatched_a_blocks:
+            unmatched_block_rows.append((block.side_a_name, "[italic red]deleted[/italic red]", "-"))
 
-            for path in diffset.differing_scripts_details[script].unmatched_a_blocks:
-                unmatched_block_rows.append((path, "[italic red]deleted[/italic red]", "-"))
+        for block in diffset.paired_scripts_block_diffs[script].unmatched_b_blocks:
+            unmatched_block_rows.append((block.side_b_name, "[italic green]created[/italic green]", "-"))
 
-            for path in diffset.differing_scripts_details[script].unmatched_b_blocks:
-                unmatched_block_rows.append((path, "[italic green]created[/italic green]", "-"))
+        # Sort by block name.
+        yield from sorted(unmatched_block_rows, key=lambda row: row[0])
 
-            # Sort by block name.
-            return sorted(unmatched_block_rows, key=lambda row: row[0])
-
-        unfold_script_tree_in_table(diffset.get_scripts_with_unmatched_blocks(), diff_table, _get_unmatched_block_rows)
+    unfold_script_tree_in_table(diffset.get_differing_scripts(), diff_table, _get_modified_block_rows)
 
     console.print(diff_table)
