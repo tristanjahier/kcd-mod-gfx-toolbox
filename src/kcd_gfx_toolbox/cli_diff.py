@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
 from __future__ import annotations
-from typing import Annotated, Callable, Iterable
+from typing import Annotated, cast
 import typer
-from .gfx_diff import GfxScript, diff_normalized_script_trees
+from .gfx_diff import GfxDiffTreeNode, GfxDiffTreeNodeType, GfxScript, GfxScriptBlock, diff_normalized_script_trees
 from .extraction import extract_gfx_contents, extraction_cache_key, resolve_ffdec
 from .avm1_pcode_normalization import NormalizationStats, normalize_file
 from .file_diff import diff_file_trees_basic
@@ -11,108 +11,96 @@ from .utils import AnsiColor, ensure_empty_dir, print_error, get_temp_dir, print
 from pathlib import Path
 import shutil
 import subprocess
-from rich.console import Console, RenderableType
+from rich.console import Console
 from rich.table import Table
 from rich import box
 
 
-def build_script_path_tree_rows(scripts: set[GfxScript]) -> list[tuple[str, GfxScript | None, str]]:
-    """
-    Render script paths as a directory/file tree.
-    Return tuples:
-        1. rendered tree row
-        2. matched script path for this row, or None for intermediate nodes
-        3. prefix to use for children rows under this node
-    """
-    tree: dict[str, dict] = {}
-    segments_to_script: dict[tuple[str, ...], GfxScript] = {}
-
-    for script in scripts:
-        p = script.side_a_path or script.side_b_path
-        assert p is not None
-
-        segments = p.parts
-
-        # Build a lookup table for later.
-        segments_to_script[segments] = script
-
-        # Create the tree structure as a dict, where keys are path segments.
-        node = tree
-        for segment in segments:
-            node = node.setdefault(segment, {})
-
-    def render_tree_node(
-        tree_node: dict[str, dict],
-        prefix: str = "",
-        path_prefix_segments: tuple[str, ...] = (),
-    ) -> list[tuple[str, GfxScript | None, str]]:
-        rows: list[tuple[str, GfxScript | None, str]] = []
-        children = sorted(tree_node.keys())  # sort paths in alphabetical order.
-
-        for i, child in enumerate(children):
-            is_last = i == len(children) - 1
-            path_segments = (*path_prefix_segments, child)
-            leaf_script = segments_to_script.get(path_segments)
-
-            if leaf_script is None:
-                child_text = f"{child}/"
-            else:
-                if leaf_script.was_renamed():
-                    script_text = f"{leaf_script.side_a_path.name} => {leaf_script.side_b_path.name}"
-                elif leaf_script.side_b_path is None:
-                    script_text = leaf_script.side_a_path.name  # common not renamed or unmatched from side A
-                else:
-                    script_text = leaf_script.side_b_path.name  # unmatched from side B
-                child_text = f"[bold cyan]{script_text}[/bold cyan]"
-
-            if not path_prefix_segments:
-                # Roots do not need a tree connector character.
-                row_text = child_text
-                child_prefix = "    "
-            else:
-                connector = "└── " if is_last else "├── "
-                row_text = f"{prefix}{connector}{child_text}"
-                child_prefix = prefix + ("    " if is_last else "│   ")
-
-            rows.append((row_text, leaf_script, child_prefix))
-
-            # Recursively render all tree nodes, depth-first.
-            rows.extend(render_tree_node(tree_node[child], child_prefix, path_segments))
-
-        return rows
-
-    return render_tree_node(tree)
-
-
-def unfold_script_tree_in_table(
-    scripts: set[GfxScript],
-    table: Table,
-    get_block_rows: Callable[[GfxScript], Iterable[tuple[RenderableType | None, ...]]],
-) -> None:
+def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table):
     """
     Append script paths and blocks as a tree to a Rich table.
     Script paths are sorted in alphabetical order.
-    Append block rows to each leaf script using `get_block_rows`.
+    Script blocks are sorted by number of lines changed.
     """
-    tree_rows = build_script_path_tree_rows(scripts)
 
-    for row_text, script, leaf_prefix in tree_rows:
-        if script is None:
-            table.add_row(row_text, "", "")
-            continue  # continue unfolding the tree until we reached a script
+    def _node_sort_key(n: GfxDiffTreeNode):
+        if n.type == GfxDiffTreeNodeType.DIRECTORY:
+            return cast(str, n.value)
+        elif n.type == GfxDiffTreeNodeType.SCRIPT:
+            script = cast(GfxScript, n.value)
+            return str(script.side_a_path or script.side_b_path)
+        elif n.type == GfxDiffTreeNodeType.SCRIPT_BLOCK:
+            block = cast(GfxScriptBlock, n.value)
+            return (-block.changed, str(block.side_a_name or block.side_b_name))
+        assert False, "must never reach this code."
 
-        if script.side_a_path is not None and script.side_b_path is not None:
-            state = "[italic yellow]modified[/italic yellow]"
-        elif script.side_b_path is None:
-            state = "[italic red]deleted[/italic red]"  # unmatched on side A
+    def _render_node(node: GfxDiffTreeNode, line_prefix: str = "", depth: int = 0, is_last_child: bool = False):
+        if depth == 0:
+            connector = ""
+            children_line_prefix = ""
         else:
-            state = "[italic green]created[/italic green]"  # unmatched on side B
+            connector = "└── " if is_last_child else "├── "
+            children_line_prefix = line_prefix + ("    " if is_last_child else "│   ")
 
-        table.add_row(row_text, state, "")
+        node_text = ""
+        node_state = ""
+        node_change_value = ""
 
-        for block_text, *block_attr in get_block_rows(script):
-            block_text = f"{leaf_prefix}[bright_yellow]◈[/bright_yellow] {block_text}"
-            table.add_row(block_text, *block_attr)
+        if node.type == GfxDiffTreeNodeType.DIRECTORY:
+            node_text = f"{node.value}/"
+
+        elif node.type == GfxDiffTreeNodeType.SCRIPT:
+            script = cast(GfxScript, node.value)
+            if script.is_paired():
+                if script.was_renamed():
+                    node_text = f"{script.side_a_path.name} => {script.side_b_path.name}"
+                else:
+                    node_text = script.side_a_path.name
+                node_state = "[italic yellow]modified[/italic yellow]"
+            elif script.side_b_path is None:  # unmatched from side A
+                node_text = script.side_a_path.name
+                node_state = "[italic red]deleted[/italic red]"
+            else:  # unmatched from side B
+                node_text = script.side_b_path.name
+                node_state = "[italic green]created[/italic green]"
+
+            node_text = f"[bold cyan]{node_text}[/bold cyan]"
+
+        elif node.type == GfxDiffTreeNodeType.SCRIPT_BLOCK:
+            block = cast(GfxScriptBlock, node.value)
+            if block.is_paired():
+                if block.was_renamed():
+                    node_text = f"{block.side_a_name} [bright_yellow]=>[/bright_yellow] {block.side_b_name}"
+                else:
+                    node_text = block.side_a_name
+                node_state = "[italic yellow]modified[/italic yellow]"
+                node_change_value = str(block.changed)
+            elif block.side_b_name is None:  # unmatched from side A
+                node_text = block.side_a_name
+                node_state = "[italic red]deleted[/italic red]"
+                node_change_value = "-"
+            else:  # unmatched from side B
+                node_text = block.side_b_name
+                node_state = "[italic green]created[/italic green]"
+                node_change_value = "-"
+            node_text = f"[bright_yellow]◈[/bright_yellow] {node_text}"
+
+        table.add_row(f"{line_prefix}{connector}{node_text}", node_state, node_change_value)
+
+        # Then we recursively render all node children, sorted in a node-type-specific logic.
+        children = sorted(node.children, key=_node_sort_key)
+
+        for i, child in enumerate(children):
+            is_last = i == len(children) - 1
+            _render_node(child, children_line_prefix, is_last_child=is_last, depth=depth + 1)
+
+    # The tree root is virtual and must not be rendered itself.
+    # Instead we render its children directly.
+    root_children = sorted(tree.children, key=_node_sort_key)
+
+    for i, child in enumerate(root_children):
+        is_last = i == len(root_children) - 1
+        _render_node(child, is_last_child=is_last)
 
 
 def normalize_script(script_src: Path, output_dir: Path, read_cache: bool) -> NormalizationStats:
@@ -438,40 +426,6 @@ def command(
 
     diff_table.add_section()
 
-    def _get_modified_block_rows(script: GfxScript):
-        block_change_rows: list[tuple[str, int]] = []
-
-        if script not in diffset.paired_scripts_block_diffs:
-            return []
-
-        for ch in diffset.paired_scripts_block_diffs[script].paired_blocks:
-            if ch.changed == 0:
-                continue  # ignore pure renames
-            display_text = (
-                f"{ch.side_a_name} [bright_yellow]=>[/bright_yellow] {ch.side_b_name}"
-                if ch.was_renamed()
-                else ch.side_a_name
-            )
-            block_change_rows.append((display_text, ch.changed))
-
-        # Sort by largest changes first, then by name.
-        block_change_rows.sort(key=lambda row: (-row[1], row[0]))
-
-        for display_text, changed in block_change_rows:
-            yield (display_text, "[italic yellow]modified[/italic yellow]", str(changed))
-
-        # Then display unmatched blocks.
-        unmatched_block_rows = []
-
-        for block in diffset.paired_scripts_block_diffs[script].unmatched_a_blocks:
-            unmatched_block_rows.append((block.side_a_name, "[italic red]deleted[/italic red]", "-"))
-
-        for block in diffset.paired_scripts_block_diffs[script].unmatched_b_blocks:
-            unmatched_block_rows.append((block.side_b_name, "[italic green]created[/italic green]", "-"))
-
-        # Sort by block name.
-        yield from sorted(unmatched_block_rows, key=lambda row: row[0])
-
-    unfold_script_tree_in_table(diffset.get_differing_scripts(), diff_table, _get_modified_block_rows)
+    unfold_diff_tree_in_table(diffset.to_tree(), diff_table)
 
     console.print(diff_table)

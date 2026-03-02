@@ -1,4 +1,6 @@
-from dataclasses import dataclass
+from __future__ import annotations
+from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 from typing import cast
 from .utils import list_tree_files
@@ -12,6 +14,7 @@ class GfxScript:
 
     Contains the script path on side A and/or side B.
     """
+
     side_a_path: Path | None = None
     side_b_path: Path | None = None
 
@@ -105,6 +108,9 @@ class GfxDiffSet:
     def get_unmatched_block_side_b_count(self) -> int:
         return sum(len(det.unmatched_b_blocks) for det in self.paired_scripts_block_diffs.values())
 
+    def to_tree(self) -> GfxDiffTreeNode:
+        return build_diff_tree(self)
+
     def __rich_repr__(self):
         yield from self.__dict__.items()
 
@@ -147,6 +153,11 @@ class ScriptDiffSet:
             any(bch.changed > 0 for bch in self.paired_blocks)
             or bool(self.unmatched_a_blocks)
             or bool(self.unmatched_b_blocks)
+        )
+
+    def get_differing_blocks(self) -> set[GfxScriptBlock]:
+        return (
+            {blk for blk in self.paired_blocks if blk.changed > 0} | self.unmatched_a_blocks | self.unmatched_b_blocks
         )
 
     def __rich_repr__(self):
@@ -233,3 +244,67 @@ def diff_normalized_script_trees(
     diffset.unmatched_b_scripts = {GfxScript(side_b_path=p) for p in unmatched_side_b_scripts}
 
     return diffset
+
+
+class GfxDiffTreeNodeType(StrEnum):
+    ROOT = "root"
+    DIRECTORY = "directory"
+    SCRIPT = "script"
+    SCRIPT_BLOCK = "script_block"
+
+
+@dataclass(frozen=True)
+class GfxDiffTreeNode:
+    type: GfxDiffTreeNodeType
+    value: str | GfxScript | GfxScriptBlock | None
+    children: set[GfxDiffTreeNode] = field(default_factory=set, compare=False, hash=False)
+
+    def __post_init__(self):
+        actual_type = type(self.value).__name__
+        if self.type == GfxDiffTreeNodeType.ROOT and self.value is not None:
+            raise ValueError(f"Root node must have a None value; got {actual_type}.")
+        if self.type == GfxDiffTreeNodeType.DIRECTORY and not isinstance(self.value, str):
+            raise ValueError(f"Directory nodes must have a string value; got {actual_type}.")
+        if self.type == GfxDiffTreeNodeType.SCRIPT and not isinstance(self.value, GfxScript):
+            raise ValueError(f"Script nodes must have a GfxScript value; got {actual_type}.")
+        if self.type == GfxDiffTreeNodeType.SCRIPT_BLOCK and not isinstance(self.value, GfxScriptBlock):
+            raise ValueError(f"Script block nodes must have a GfxScriptBlock value; got {actual_type}.")
+
+    def find_child(
+        self, node_type: GfxDiffTreeNodeType, value: str | GfxScript | GfxScriptBlock
+    ) -> GfxDiffTreeNode | None:
+        return next((c for c in self.children if c.type == node_type and c.value == value), None)
+
+
+def build_diff_tree(diffset: GfxDiffSet) -> GfxDiffTreeNode:
+    """
+    Build a tree structure of `GfxDiffTreeNode` from a diff set.
+    """
+    root = GfxDiffTreeNode(type=GfxDiffTreeNodeType.ROOT, value=None)
+
+    for script in diffset.get_differing_scripts():
+        if script.side_a_path is not None:
+            path = script.side_a_path
+        else:
+            assert script.side_b_path is not None
+            path = script.side_b_path
+
+        current_node = root
+
+        for seg in path.parent.parts:
+            if not (seg_node := current_node.find_child(GfxDiffTreeNodeType.DIRECTORY, seg)):
+                seg_node = GfxDiffTreeNode(type=GfxDiffTreeNodeType.DIRECTORY, value=seg)
+                current_node.children.add(seg_node)
+
+            current_node = seg_node
+
+        script_node = GfxDiffTreeNode(type=GfxDiffTreeNodeType.SCRIPT, value=script)
+        current_node.children.add(script_node)
+
+        if script not in diffset.paired_scripts_block_diffs:
+            continue
+
+        for block in diffset.paired_scripts_block_diffs[script].get_differing_blocks():
+            script_node.children.add(GfxDiffTreeNode(type=GfxDiffTreeNodeType.SCRIPT_BLOCK, value=block))
+
+    return root
