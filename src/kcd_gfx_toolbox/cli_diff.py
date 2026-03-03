@@ -37,32 +37,33 @@ def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table):
     def _render_node(node: GfxDiffTreeNode, line_prefix: str = "", depth: int = 0, is_last_child: bool = False):
         if depth == 0:
             connector = ""
-            children_line_prefix = ""
+            children_line_prefix = " "
         else:
             connector = "└── " if is_last_child else "├── "
-            children_line_prefix = line_prefix + ("    " if is_last_child else "│   ")
+            children_line_prefix = line_prefix + ("    " if is_last_child else "│   ") + " "
 
         node_text = ""
         node_state = ""
         node_change_value = ""
 
         if node.type == GfxDiffTreeNodeType.DIRECTORY:
-            node_text = f"{node.value}/"
+            node_text = f"🗁  {node.value}/"
 
         elif node.type == GfxDiffTreeNodeType.SCRIPT:
             script = cast(GfxScript, node.value)
             if script.is_paired():
                 if script.was_renamed():
-                    node_text = f"{script.side_a_path.name} => {script.side_b_path.name}"
+                    node_text = f"{script.side_a_path.name} [white]→[/white] {script.side_b_path.name}"
+                    node_state = "[yellow]modified[/yellow], [bright_blue]renamed[/bright_blue]"
                 else:
                     node_text = script.side_a_path.name
-                node_state = "[italic yellow]modified[/italic yellow]"
+                    node_state = "[yellow]modified[/yellow]"
             elif script.side_b_path is None:  # unmatched from side A
                 node_text = script.side_a_path.name
-                node_state = "[italic red]deleted[/italic red]"
+                node_state = "[red]deleted[/red]"
             else:  # unmatched from side B
                 node_text = script.side_b_path.name
-                node_state = "[italic green]created[/italic green]"
+                node_state = "[green]new[/green]"
 
             node_text = f"[bold cyan]{node_text}[/bold cyan]"
 
@@ -70,22 +71,24 @@ def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table):
             block = cast(GfxScriptBlock, node.value)
             if block.is_paired():
                 if block.was_renamed():
-                    node_text = f"{block.side_a_name} [bright_yellow]=>[/bright_yellow] {block.side_b_name}"
+                    node_text = f"{block.side_a_name} [bright_yellow]→[/bright_yellow] {block.side_b_name}"
+                    node_state = "[yellow]modified[/yellow], [bright_blue]renamed[/bright_blue]"
                 else:
                     node_text = block.side_a_name
-                node_state = "[italic yellow]modified[/italic yellow]"
+                    node_state = "[yellow]modified[/yellow]"
                 node_change_value = str(block.changed)
             elif block.side_b_name is None:  # unmatched from side A
                 node_text = block.side_a_name
-                node_state = "[italic red]deleted[/italic red]"
+                node_state = "[red]deleted[/red]"
                 node_change_value = "-"
             else:  # unmatched from side B
                 node_text = block.side_b_name
-                node_state = "[italic green]created[/italic green]"
+                node_state = "[green]new[/green]"
                 node_change_value = "-"
-            node_text = f"[bright_yellow]◈[/bright_yellow] {node_text}"
 
-        table.add_row(f"{line_prefix}{connector}{node_text}", node_state, node_change_value)
+            node_text = f"[bright_yellow]❖[/bright_yellow] {node_text}"
+
+        table.add_row(f"{line_prefix}{connector}{node_text}", f"[italic]{node_state}[/italic]", node_change_value)
 
         # Then we recursively render all node children, sorted in a node-type-specific logic.
         children = sorted(node.children, key=_node_sort_key)
@@ -412,7 +415,7 @@ def command(
     changed_lines_total = diffset.get_modified_block_line_count()
 
     console.print(
-        f"➥ Within modified scripts: "
+        f"➥  Within modified scripts: "
         f"[yellow]{changed_count} blocks modified[/yellow], "
         f"[red]{deleted_count} blocks deleted[/red], "
         f"[green]{created_count} blocks created[/green] "
