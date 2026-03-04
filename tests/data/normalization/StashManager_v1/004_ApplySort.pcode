@@ -26,29 +26,29 @@ Push register2
 Push "push"
 CallMethod
 Pop
-Push register3
+Push register4
 Push "m_CurrentSort"
 GetMember
-StoreRegister 4
-Push register3
+StoreRegister 3
+Push register4
 Push "E_IS_Count"
 GetMember
 StrictEquals
 If L0
-Push register4
 Push register3
+Push register4
 Push "E_IS_Weight"
 GetMember
 StrictEquals
 If L1
-Push register4
 Push register3
+Push register4
 Push "E_IS_Price"
 GetMember
 StrictEquals
 If L2
-Push register4
 Push register3
+Push register4
 Push "E_IS_Condition"
 GetMember
 StrictEquals
@@ -151,7 +151,7 @@ Pop
 Push register2
 Push register1
 Push 2
-Push register3
+Push register4
 Push "m_DisplayedData"
 GetMember
 Push "sortOn"

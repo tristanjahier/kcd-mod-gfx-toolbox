@@ -1,29 +1,29 @@
 Push register2
 Push "TernaryProbe"
 DefineFunction "", 3, "v", "t", "f" {
-Push register1
+Push register3
 Not
 If L0
-Push register2
+Push register4
 Jump L1
-L0:Push register3
-L1:StoreRegister 4
+L0:Push register5
+L1:StoreRegister 1
 Pop
 Push undefined
-StoreRegister 5
+StoreRegister 2
 Pop
-Push register1
+Push register3
 Not
 If L2
-Push register2
-StoreRegister 5
+Push register4
+StoreRegister 2
 Pop
 Jump L3
-L2:Push register3
-StoreRegister 5
+L2:Push register5
+StoreRegister 2
 Pop
-L3:Push register4
-Push register5
+L3:Push register1
+Push register2
 Equals2
 Return
 }

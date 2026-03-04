@@ -11,28 +11,28 @@ StoreRegister 1
 Pop
 L0:Push register2
 If L1
-Push register3
+Push register5
 Push "UNDEFINED_SLOT"
 GetMember
 StoreRegister 2
 Pop
-L1:Push register3
+L1:Push register5
 Push "m_SlotsObject"
 GetMember
-Push register4
+Push register6
 GetMember
-StoreRegister 5
+StoreRegister 3
 Pop
 Push undefined
-StoreRegister 6
+StoreRegister 4
 Pop
-Push register5
+Push register3
 PushDuplicate
 Not
 If L2
 Pop
 Push register2
-Push register3
+Push register5
 Push "UNDEFINED_SLOT"
 GetMember
 Equals2
@@ -40,7 +40,7 @@ PushDuplicate
 If L2
 Pop
 Push 0
-Push register5
+Push register3
 Push "GetType"
 CallMethod
 Push register2
@@ -48,10 +48,10 @@ Equals2
 L2:Not
 If L3
 Push 0
-Push register5
+Push register3
 Push "GetInfo"
 CallMethod
-StoreRegister 6
+StoreRegister 4
 Pop
 Push register1
 Push 0
@@ -61,7 +61,7 @@ Not
 If L4
 Pop
 Push 0
-Push register6
+Push register4
 Push "GetCount"
 CallMethod
 Push register1
@@ -70,38 +70,38 @@ L4:Not
 If L5
 Push register1
 Push 1
-Push register6
+Push register4
 Push "RemoveCount"
 CallMethod
 Pop
 Jump L6
-L5:Push register3
+L5:Push register5
 Push "m_SlotsObject"
 GetMember
-Push register4
+Push register6
 Delete
 Pop
-Push register3
+Push register5
 Push "m_SlotsSize"
-Push register3
+Push register5
 Push "m_SlotsSize"
 GetMember
 Push 1
 Subtract
 SetMember
 Push 0
-Push register6
+Push register4
 Push "GetCategory"
 CallMethod
-Push register3
+Push register5
 Push "E_IC_Money"
 GetMember
 Equals2
 Not
 If L6
-Push register5
-Push 1
 Push register3
+Push 1
+Push register5
 Push "RemoveMoneySlot"
 CallMethod
 Pop

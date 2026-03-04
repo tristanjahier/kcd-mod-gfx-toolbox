@@ -385,14 +385,14 @@ def test_canonicalize_register_references_in_function_block():
         Push register2
         Push "SetItemQuantity"
         DefineFunction "", 1, "count" {
-        Push register1, "m_Quantity"
+        Push register2, "m_Quantity"
         GetMember
-        Push register2
+        Push register1
         GetMember
         Push 0.0
-        StoreRegister 2
+        StoreRegister 1
         Pop
-        Push register3, register1
+        Push register3, register2
         Pop
         }
         SetMember
@@ -488,6 +488,40 @@ def test_canonicalize_register_references_isolates_nested_function_scopes():
         }
         Push register2
         StoreRegister 2
+        }
+        SetMember
+    """)
+
+
+def test_canonicalize_register_references_prioritizes_written_registers():
+    pcode_sample = sample_text_lines("""
+        Push register2
+        Push "WriteFirstMapping"
+        DefineFunction "", 0 {
+        Push register9
+        Push register8
+        StoreRegister 8
+        Push register8
+        Push register5
+        Return
+        }
+        SetMember
+    """)
+
+    canonicalized = avm1_pcode_normalization.canonicalize_register_references_in_function_block(pcode_sample)
+
+    # Register written through `StoreRegister 8` must get the first canonical index.
+    # Read-only register9 and register5 are assigned afterwards.
+    assert canonicalized == sample_text_lines("""
+        Push register2
+        Push "WriteFirstMapping"
+        DefineFunction "", 0 {
+        Push register2
+        Push register1
+        StoreRegister 1
+        Push register1
+        Push register3
+        Return
         }
         SetMember
     """)

@@ -1,5 +1,5 @@
 DefineFunction "", 0 {
-Push register1
+Push register2
 Push "BoundVariantA"
 DefineFunction "", 1, "v" {
 Push register1
@@ -8,10 +8,10 @@ Add2
 Return
 }
 SetMember
-Push register1
-StoreRegister 2
-Pop
 Push register2
+StoreRegister 1
+Pop
+Push register1
 Push "BoundVariantB"
 DefineFunction "", 1, "v" {
 Push register1

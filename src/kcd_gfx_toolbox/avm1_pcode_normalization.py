@@ -346,7 +346,10 @@ def canonicalize_function_definition_headers(lines: list[str]) -> list[str]:
 def canonicalize_register_references_in_function_block(lines: list[str]) -> list[str]:
     """
     Canonicalize register references (`registerN` and `StoreRegister N`) by reindexing them
-    by order of appearance.
+    by "first write" order per function scope.
+
+    Register indices first seen in `StoreRegister` instructions get canonical indices first.
+    Registers only ever read are assigned afterwards, in order of appearance.
 
     Example:
         Push register2, "m_Count"
@@ -358,14 +361,14 @@ def canonicalize_register_references_in_function_block(lines: list[str]) -> list
         Pop
         Push register3, register2
     =>
-        Push register1, "m_Count"
+        Push register2, "m_Count"
         GetMember
-        Push register2
+        Push register1
         GetMember
         Push 0.0
-        StoreRegister 2
+        StoreRegister 1
         Pop
-        Push register3, register1
+        Push register3, register2
     """
     # Find the function definition header line.
     define_function_index = next(
@@ -424,6 +427,38 @@ def canonicalize_register_references_in_function_block(lines: list[str]) -> list
         end_idx = find_function_end_line(canonicalized_lines, define_idx)
         scope = RegisterScope()
 
+        # First pass: scan `StoreRegister N` instructions and pre-assign canonical indices
+        # to stabilize register assignment independently from read-order churn.
+        i = define_idx + 1
+
+        while i <= end_idx:
+            current = strip_label(canonicalized_lines[i]).strip()
+
+            # Skip nested function bodies. They will be canonicalized recursively later.
+            if DEFINE_FUNCTION_ANY_RE.match(current):
+                nested_end_idx = find_function_end_line(canonicalized_lines, i)
+                i = nested_end_idx + 1
+                continue
+
+            tokens = tokenize_line(canonicalized_lines[i])
+            j = 0
+
+            while j < len(tokens):
+                _, tok = tokens[j]
+
+                if tok == "StoreRegister" and j + 1 < len(tokens):
+                    _, next_tok = tokens[j + 1]
+                    if store_register_operand_re.fullmatch(next_tok):
+                        scope.canonicalize_register_index(next_tok)
+                        j += 2
+                        continue
+
+                j += 1
+
+            i += 1
+
+        # Second pass: rewrite register references using the pre-assigned map,
+        # and assign indices to read-only registers on first encounter.
         i = define_idx + 1
         while i <= end_idx:
             current = strip_label(canonicalized_lines[i]).strip()

@@ -14,12 +14,12 @@ Push register3
 Push register2
 Push register1
 Push 3
-Push register4
+Push register5
 Push "Concat3"
 CallMethod
-StoreRegister 5
+StoreRegister 4
 Pop
-Push register5
+Push register4
 Return
 }
 SetMember
