@@ -890,6 +890,67 @@ def test_diff_file_trees_reports_equal_paths_and_pure_renames_separately(tmp_pat
     }
 
 
+def test_diff_file_trees_reports_equal_files_that_are_not_byte_identical(tmp_path: Path):
+    _create_fake_file_tree(
+        tmp_path,
+        {
+            "A/": None,
+            "A/scripts/": None,
+            "A/scripts/a.pcode": "Push register1\nReturn\n",
+        },
+    )
+
+    _create_fake_file_tree(
+        tmp_path,
+        {
+            "B/": None,
+            "B/scripts/": None,
+            "B/scripts/a.pcode": "Push register1\nReturn",
+        },
+    )
+
+    changes, only_in_a, only_in_b, equals = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
+
+    assert not changes
+    assert not only_in_a
+    assert not only_in_b
+    assert equals == [Path("scripts/a.pcode")]
+
+
+def test_diff_file_trees_reports_pure_rename_pairs_that_are_not_byte_identical(tmp_path: Path):
+    _create_fake_file_tree(
+        tmp_path,
+        {
+            "A/": None,
+            "A/scripts/": None,
+            "A/scripts/a.pcode": "Push register1\nReturn\n",
+        },
+    )
+
+    _create_fake_file_tree(
+        tmp_path,
+        {
+            "B/": None,
+            "B/scripts/": None,
+            "B/scripts/atoto.pcode": "Push register1\nReturn",
+        },
+    )
+
+    changes, only_in_a, only_in_b, equals = file_diff.diff_file_trees(tmp_path / "A", tmp_path / "B")
+
+    assert set(changes) == {
+        file_diff.FileChange(
+            path=Path("scripts/a.pcode"),
+            changed=0,  # pure rename
+            path_new=Path("scripts/atoto.pcode"),
+        )
+    }
+
+    assert not only_in_a
+    assert not only_in_b
+    assert not equals
+
+
 def test_format_path_rename_git_style_edge_cases():
     assert file_diff.format_path_rename_git_style(Path("a/b.txt"), Path("c/d.txt")) == "a/b.txt => c/d.txt"
 

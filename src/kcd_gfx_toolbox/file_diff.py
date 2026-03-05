@@ -121,6 +121,8 @@ def diff_file_trees(
 
         if changed > 0:
             changes.append(FileChange(path=rel_path, changed=changed))
+        else:
+            equals.append(rel_path)
 
     # Now we need to take care of unmatched paths on both sides.
     # The most common case is that a path has been renamed, but the file is the same.
@@ -143,9 +145,8 @@ def diff_file_trees(
         paths_in_dir1 = [p for p, h in unmatched_dir1_hashes.items() if h == file_hash]
         paths_in_dir2 = [p for p, h in unmatched_dir2_hashes.items() if h == file_hash]
 
-        # Note: the following pairing logic is "non-existent". We simply discard the same
-        # number of identical files (by hash) on each side.
-        # It would probably be better for reporting to pair the "closest" paths.
+        # Note: the following pairing logic is simplistic: just discard the same
+        # number of hash-identical files on each side. It does not try to capture rename "intent".
         paired_count = min(len(paths_in_dir1), len(paths_in_dir2))
         paired_exact_matches = list(zip(paths_in_dir1[:paired_count], paths_in_dir2[:paired_count]))
 
@@ -211,8 +212,7 @@ def diff_file_trees(
 
         changed = diff_texts(file1_lines, read_file_from_dir2(best_candidate))
 
-        if changed > 0:
-            changes.append(FileChange(path=path_in_dir1, changed=changed, path_new=best_candidate))
+        changes.append(FileChange(path=path_in_dir1, changed=changed, path_new=best_candidate))
 
     return changes, sorted(unmatched_dir1), sorted(unmatched_dir2), equals
 
