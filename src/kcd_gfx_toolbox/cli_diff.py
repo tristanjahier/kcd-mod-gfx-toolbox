@@ -3,7 +3,14 @@
 from __future__ import annotations
 from typing import Annotated, cast
 import typer
-from .gfx_diff import GfxDiffTreeNode, GfxDiffTreeNodeType, GfxScript, GfxScriptBlock, diff_normalized_script_trees
+from .gfx_diff import (
+    GfxDiffTreeNode,
+    GfxDiffTreeNodeType,
+    GfxScript,
+    GfxScriptBlock,
+    diff_normalized_script_trees,
+    refine_block_changes,
+)
 from .extraction import extract_gfx_contents, extraction_cache_key, resolve_ffdec
 from .avm1_pcode_normalization import NormalizationStats, normalize_file
 from .file_diff import diff_file_trees_basic
@@ -31,7 +38,7 @@ def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table):
             return str(script.side_a_path or script.side_b_path)
         elif n.type == GfxDiffTreeNodeType.SCRIPT_BLOCK:
             block = cast(GfxScriptBlock, n.value)
-            return (-block.changed, str(block.side_a_name or block.side_b_name))
+            return (-block.label_alignment_changed, str(block.side_a_name or block.side_b_name))
         assert False, "must never reach this code."
 
     def _render_node(node: GfxDiffTreeNode, line_prefix: str = "", depth: int = 0, is_last_child: bool = False):
@@ -44,7 +51,7 @@ def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table):
 
         node_text = ""
         node_state = ""
-        node_change_value = ""
+        node_change_values = ()
 
         if node.type == GfxDiffTreeNodeType.DIRECTORY:
             node_text = f"🗁  {node.value}/"
@@ -76,19 +83,30 @@ def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table):
                 else:
                     node_text = block.side_a_name
                     node_state = "[yellow]modified[/yellow]"
-                node_change_value = str(block.changed)
+
+                refine_ratio = block.label_alignment_changed / block.changed
+                label_alignment_text = str(block.label_alignment_changed)
+
+                if refine_ratio < 1:
+                    percent = round((1 - refine_ratio) * 100)
+                    label_alignment_text = f"[bold green]🡖 {percent}%[/bold green] {block.label_alignment_changed}"
+                elif refine_ratio > 1:
+                    percent = round((refine_ratio - 1) * 100)
+                    label_alignment_text = f"[bold red]🡕 {percent}%[/bold red] {block.label_alignment_changed}"
+
+                node_change_values = (str(block.changed), label_alignment_text)
             elif block.side_b_name is None:  # unmatched from side A
                 node_text = block.side_a_name
                 node_state = "[red]deleted[/red]"
-                node_change_value = "-"
+                node_change_values = ("-", "-")
             else:  # unmatched from side B
                 node_text = block.side_b_name
                 node_state = "[green]new[/green]"
-                node_change_value = "-"
+                node_change_values = ("-", "-")
 
             node_text = f"[bright_yellow]❖[/bright_yellow] {node_text}"
 
-        table.add_row(f"{line_prefix}{connector}{node_text}", f"[italic]{node_state}[/italic]", node_change_value)
+        table.add_row(f"{line_prefix}{connector}{node_text}", f"[italic]{node_state}[/italic]", *node_change_values)
 
         # Then we recursively render all node children, sorted in a node-type-specific logic.
         children = sorted(node.children, key=_node_sort_key)
@@ -396,6 +414,9 @@ def command(
         normalization_dir_b,
     )
 
+    # Refine the final difference score on block-level using more noise-reduction tweaks.
+    refine_block_changes(diffset, normalization_dir_a, normalization_dir_b)
+
     if diffset.is_empty():
         print(
             f"{AnsiColor.GREEN}Normalized trees are identical. The difference might be decompilation noise only.{AnsiColor.RESET}"
@@ -425,7 +446,8 @@ def command(
     diff_table = Table(box=box.SIMPLE, show_edge=False, pad_edge=False, header_style=None)
     diff_table.add_column("Script block relative path")
     diff_table.add_column("State")
-    diff_table.add_column("Lines changed", justify="right")
+    diff_table.add_column("Lines changed (baseline)", justify="right")
+    diff_table.add_column("(+ label alignment)", justify="right")
 
     diff_table.add_section()
 

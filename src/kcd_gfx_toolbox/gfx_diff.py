@@ -3,8 +3,9 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import cast
-from .utils import list_tree_files
-from .file_diff import FileChange, diff_file_trees, format_path_rename_git_style
+from .utils import list_tree_files, read_file_lines
+from .avm1_pcode_alignment import align_labels_in_text
+from .file_diff import FileChange, diff_file_trees, diff_texts, format_path_rename_git_style
 
 
 @dataclass(frozen=True)
@@ -115,15 +116,16 @@ class GfxDiffSet:
         yield from self.__dict__.items()
 
 
-@dataclass(frozen=True)
+@dataclass(unsafe_hash=True)
 class GfxScriptBlock:
     """
     One diff entry for a script block.
     """
 
-    side_a_name: str | None = None
-    side_b_name: str | None = None
-    changed: int = 0
+    side_a_name: str | None = field(default=None, hash=True)
+    side_b_name: str | None = field(default=None, hash=True)
+    changed: int = field(default=0, compare=False)
+    label_alignment_changed: int = field(default=0, compare=False)
 
     def __post_init__(self):
         if self.side_a_name is None and self.side_b_name is None:
@@ -242,6 +244,43 @@ def diff_normalized_script_trees(
 
     diffset.unmatched_a_scripts = {GfxScript(side_a_path=p) for p in unmatched_side_a_scripts}
     diffset.unmatched_b_scripts = {GfxScript(side_b_path=p) for p in unmatched_side_b_scripts}
+
+    return diffset
+
+
+def recompute_block_changes_with_label_alignment(script_dir_a: Path, script_dir_b: Path, blocks: set[GfxScriptBlock]):
+    """
+    Recompute block diffs by realigning labels between side A and side B.
+
+    Since labels are already canonicalized, divergences are not mere renaming but structural
+    drift caused by label insertions or deletions on side B, shifting all subsequent indices.
+    Label alignment reduces this noise, yielding more accurate change counts.
+    """
+    for block in blocks:
+        if not block.is_paired():
+            continue
+
+        block_a = read_file_lines(script_dir_a / f"{block.side_a_name}.pcode")
+        block_b = read_file_lines(script_dir_b / f"{block.side_b_name}.pcode")
+        block_b = align_labels_in_text(block_b, anchor_lines=block_a)
+        block.label_alignment_changed = diff_texts(block_a, block_b)
+
+
+def refine_block_changes(
+    diffset: GfxDiffSet,
+    normalization_dir_a: Path,
+    normalization_dir_b: Path,
+) -> GfxDiffSet:
+    """
+    Apply post-normalization refinement passes to script block diffs to reduce noise
+    that baseline normalization alone cannot eliminate.
+    """
+    for script in diffset.get_scripts_with_differing_blocks():
+        recompute_block_changes_with_label_alignment(
+            normalization_dir_a / script.side_a_path,
+            normalization_dir_b / script.side_b_path,
+            diffset.paired_scripts_block_diffs[script].paired_blocks,
+        )
 
     return diffset
 
