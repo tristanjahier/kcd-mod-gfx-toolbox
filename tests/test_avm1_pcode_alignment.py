@@ -1,9 +1,14 @@
 from kcd_gfx_toolbox.avm1_pcode_alignment import (
     neutralize_labels_in_line,
     extract_jump_target_label_from_line,
+    neutralize_registers_in_line,
+    extract_registers_from_line,
     build_label_alignment_map,
+    build_register_alignment_map,
     remap_labels_in_line,
+    remap_registers_in_line,
     align_labels_in_text,
+    align_registers_in_text,
 )
 from tests.helpers import sample_text_lines
 
@@ -269,7 +274,7 @@ def test_align_labels_in_text_for_diff_unmapped_label_unchanged():
     """)
 
 
-def test_align_labels_in_text_for_diff():
+def test_align_labels_in_text():
     text1 = sample_text_lines("""
         L3:Push 0.2
         StoreRegister 4
@@ -313,4 +318,214 @@ def test_align_labels_in_text_for_diff():
         If lbl002
         Push "m_count"
         GetMember
+    """)
+
+
+def test_neutralize_registers_in_line_push_register():
+    assert neutralize_registers_in_line("Push register8") == "Push registerN"
+    assert neutralize_registers_in_line("Push register8, 1") == "Push registerN, 1"
+    assert neutralize_registers_in_line("Push 0, register4") == "Push 0, registerN"
+    assert neutralize_registers_in_line("Push 0.5, register9") == "Push 0.5, registerN"
+    assert neutralize_registers_in_line('Push register4, "toto"') == 'Push registerN, "toto"'
+    assert neutralize_registers_in_line('Push "caca", register12') == 'Push "caca", registerN'
+    assert (
+        neutralize_registers_in_line('Push register02, register03, "yabak", register10')
+        == 'Push registerN, registerN, "yabak", registerN'
+    )
+
+
+def test_neutralize_registers_in_line_store_register():
+    assert neutralize_registers_in_line("StoreRegister 4") == "StoreRegister N"
+
+
+def test_neutralize_registers_in_line_label_untouched():
+    assert neutralize_registers_in_line("L1:Push register8") == "L1:Push registerN"
+    assert neutralize_registers_in_line("locmine:StoreRegister 56") == "locmine:StoreRegister N"
+
+
+def test_neutralize_registers_in_line_non_register_instructions_untouched():
+    assert neutralize_registers_in_line("Push 1") == "Push 1"
+    assert neutralize_registers_in_line("Add2") == "Add2"
+    assert neutralize_registers_in_line("If loc96") == "If loc96"
+
+
+def test_extract_registers_from_line_push_register():
+    assert extract_registers_from_line("Push register8") == ["register8"]
+    assert extract_registers_from_line("Push register8, 1") == ["register8"]
+    assert extract_registers_from_line("Push 0, register4") == ["register4"]
+    assert extract_registers_from_line("Push 0.5, register9") == ["register9"]
+    assert extract_registers_from_line('Push register4, "toto"') == ["register4"]
+    assert extract_registers_from_line('Push "caca", register12') == ["register12"]
+    assert extract_registers_from_line('Push register02, register03, "yabak", register10') == [
+        "register02",
+        "register03",
+        "register10",
+    ]
+
+
+def test_extract_registers_from_line_store_register():
+    assert extract_registers_from_line("StoreRegister 0") == ["register0"]
+
+
+def test_extract_registers_from_line_without_registers():
+    assert extract_registers_from_line("Push 1") == []
+    assert extract_registers_from_line('Push "dsfsdf"') == []
+    assert extract_registers_from_line("GetMember") == []
+    assert extract_registers_from_line("Pop") == []
+
+
+def test_build_register_alignment_map_empty_texts():
+    assert build_register_alignment_map([], []) == {}
+
+
+def test_build_register_alignment_map_without_registers():
+    text1 = sample_text_lines("""
+        Push 1
+        Push 2
+        Return
+    """)
+
+    text2 = sample_text_lines("""
+        Push 1
+        Push 3
+        Return
+    """)
+
+    assert build_register_alignment_map(text1, text2) == {}
+
+
+def test_build_register_alignment_map_simple_drift():
+    text1 = sample_text_lines("""
+        Push 0
+        StoreRegister 4
+        Push register4
+        Push register6
+        If l12
+        Return
+    """)
+
+    text2 = sample_text_lines("""
+        Push 0
+        StoreRegister 8
+        Push register8
+        Push register10
+        If l12
+        Return
+    """)
+
+    result = build_register_alignment_map(text1, text2)
+    assert result == {"register8": "register4", "register10": "register6"}
+
+
+def test_build_register_alignment_map_tie_not_matched():
+    text1 = sample_text_lines("""
+        Push 0, register10
+        StoreRegister 1
+        Push 1
+        StoreRegister 2
+        Push register1
+        Push register2
+        Return
+        StoreRegister 10
+    """)
+
+    text2 = sample_text_lines("""
+        Push 0, register5
+        StoreRegister 7
+        Push 1
+        StoreRegister 7
+        Push register7
+        Push register7
+        Return
+        StoreRegister 6
+    """)
+
+    # register7 in text2 corresponds equally to register1 and register2 in text1. Tie -> dropped.
+    # register5 and register6 in text2 both equally correspond to register10 in text1. Tie -> dropped.
+    assert build_register_alignment_map(text1, text2) == {}
+
+
+def test_remap_registers_in_line_push_register():
+    register_map = {"register10": "register11", "register8": "register4", "register02": "register10"}
+    assert remap_registers_in_line("Push register8", register_map) == "Push register4"
+    assert (
+        remap_registers_in_line('Push register02, register03, "yabak", register10', register_map)
+        == 'Push register10, register03, "yabak", register11'
+    )
+
+
+def test_remap_registers_in_line_store_register():
+    assert remap_registers_in_line("StoreRegister 8", {"register8": "register4"}) == "StoreRegister 4"
+
+
+def test_remap_registers_in_line_unknown_register_unchanged():
+    assert remap_registers_in_line("Push register8", {"register9": "register4"}) == "Push register8"
+
+
+def test_align_registers_in_text_for_diff_no_register_map_no_changes():
+    text1 = sample_text_lines("""
+        Push 1
+        Return
+        L051: Pop
+    """)
+
+    text2 = sample_text_lines("""
+        Push 1
+        Return
+        L051: Pop
+    """)
+
+    assert align_registers_in_text(text2, text1) == text2
+
+
+def test_align_registers_in_text():
+    text1 = sample_text_lines("""
+        L3:Push 0.2
+        StoreRegister 4
+        Push 1.1, register8
+        Pop
+        L8: Push register8
+        Push register6
+        If loc78
+        Pop
+        L9: Push "toto"
+        Push register1
+        If lbl002
+        Push "m_count"
+        GetMember
+        StoreRegister 8
+    """)
+
+    text2 = sample_text_lines("""
+        L3:Push 0.2
+        StoreRegister 4
+        Push 1.1, register9
+        Pop
+        L8: Push register9
+        Push register7
+        If loc78
+        Pop
+        L9: Push "caca"
+        Push register3
+        If lbl002
+        Push "m_count"
+        GetMember
+        StoreRegister 7
+    """)
+
+    assert align_registers_in_text(text2, text1) == sample_text_lines("""
+        L3:Push 0.2
+        StoreRegister 4
+        Push 1.1, register8
+        Pop
+        L8:Push register8
+        Push register7
+        If loc78
+        Pop
+        L9: Push "caca"
+        Push register1
+        If lbl002
+        Push "m_count"
+        GetMember
+        StoreRegister 7
     """)

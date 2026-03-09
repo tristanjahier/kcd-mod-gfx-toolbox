@@ -9,7 +9,7 @@ from .gfx_diff import (
     GfxScript,
     GfxScriptBlock,
     diff_normalized_script_trees,
-    refine_block_changes,
+    refine_block_diffs,
 )
 from .extraction import extract_gfx_contents, extraction_cache_key, resolve_ffdec
 from .avm1_pcode_normalization import NormalizationStats, normalize_file
@@ -38,7 +38,7 @@ def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table):
             return str(script.side_a_path or script.side_b_path)
         elif n.type == GfxDiffTreeNodeType.SCRIPT_BLOCK:
             block = cast(GfxScriptBlock, n.value)
-            return (-block.label_alignment_changed, str(block.side_a_name or block.side_b_name))
+            return (-block.refined_changed, str(block.side_a_name or block.side_b_name))
         assert False, "must never reach this code."
 
     def _render_node(node: GfxDiffTreeNode, line_prefix: str = "", depth: int = 0, is_last_child: bool = False):
@@ -84,17 +84,17 @@ def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table):
                     node_text = block.side_a_name
                     node_state = "[yellow]modified[/yellow]"
 
-                refine_ratio = block.label_alignment_changed / block.changed
-                label_alignment_text = str(block.label_alignment_changed)
+                refine_ratio = block.refined_changed / block.changed
+                refined_text = str(block.refined_changed)
 
                 if refine_ratio < 1:
                     percent = round((1 - refine_ratio) * 100)
-                    label_alignment_text = f"[bold green]🡖 {percent}%[/bold green] {block.label_alignment_changed}"
+                    refined_text = f"[bold green]🡖 {percent}%[/bold green] {block.refined_changed}"
                 elif refine_ratio > 1:
                     percent = round((refine_ratio - 1) * 100)
-                    label_alignment_text = f"[bold red]🡕 {percent}%[/bold red] {block.label_alignment_changed}"
+                    refined_text = f"[bold red]🡕 {percent}%[/bold red] {block.refined_changed}"
 
-                node_change_values = (str(block.changed), label_alignment_text)
+                node_change_values = (str(block.changed), refined_text)
             elif block.side_b_name is None:  # unmatched from side A
                 node_text = block.side_a_name
                 node_state = "[red]deleted[/red]"
@@ -415,7 +415,7 @@ def command(
     )
 
     # Refine the final difference score on block-level using more noise-reduction tweaks.
-    refine_block_changes(diffset, normalization_dir_a, normalization_dir_b)
+    refine_block_diffs(diffset, normalization_dir_a, normalization_dir_b)
 
     if diffset.is_empty():
         print(
@@ -447,7 +447,7 @@ def command(
     diff_table.add_column("Script block relative path")
     diff_table.add_column("State")
     diff_table.add_column("Lines changed (baseline)", justify="right")
-    diff_table.add_column("(+ label alignment)", justify="right")
+    diff_table.add_column("(+ label/register alignment)", justify="right")
 
     diff_table.add_section()
 

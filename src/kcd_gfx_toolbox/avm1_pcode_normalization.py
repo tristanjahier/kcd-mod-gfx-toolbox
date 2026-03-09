@@ -14,6 +14,10 @@ PUSH_SINGLE_RE = re.compile(r'^\s*Push\s+(?:register\d+|r\d+)\s*,\s*"([^"]+)"\s*
 PUSH_OBJ_RE = re.compile(r"^\s*Push\s+(?:register\d+|r\d+)\s*$")
 PUSH_NAME_RE = re.compile(r'^\s*Push\s+"([^"]+)"\s*$')
 
+REGISTER_REFERENCE_RE = re.compile(r"\bregister\d+\b")
+PUSH_REGISTER_RE = re.compile(rf"^\s*Push\s+.*(?P<register>{REGISTER_REFERENCE_RE.pattern}).*")
+STORE_REGISTER_RE = re.compile(r"^\s*StoreRegister\s+(?P<regindex>\d+)\s*")
+
 DEFINE_FUNCTION_ANY_RE = re.compile(r"^\s*DefineFunction(?:2)?\b")
 DEFINE_FUNCTION_HEADER_RE = re.compile(r'^\s*DefineFunction(?:2)?\s*"([^"]*)"\s*,\s*(\d+)')
 
