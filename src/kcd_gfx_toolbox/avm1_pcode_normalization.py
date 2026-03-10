@@ -526,6 +526,41 @@ def normalize_not_not_if_patterns(lines: list[str]) -> list[str]:
     return canonicalized_lines
 
 
+def list_label_references(lines: list[str]) -> set[str]:
+    """
+    Return a set of all label references (not definitions/prefixes) found in lines.
+    """
+    referenced_labels: set[str] = set()
+
+    for line in lines:
+        if match := LABEL_REFERENCED_LINE_RE.match(strip_label(line).strip()):
+            referenced_labels.add(match.group("label").lower())
+
+    return referenced_labels
+
+
+def strip_unreferenced_label_definitions(lines: list[str]) -> list[str]:
+    """
+    Remove label prefixes (definitions) when the label is never referenced within the same block.
+    """
+    referenced_labels = list_label_references(lines)
+    cleaned_lines: list[str] = []
+
+    for line in lines:
+        labelless_line, label = extract_label_from_line(line)
+
+        if label is None:
+            cleaned_lines.append(line)
+            continue
+
+        if label.lower() not in referenced_labels:
+            cleaned_lines.append(labelless_line)
+        else:
+            cleaned_lines.append(line)
+
+    return cleaned_lines
+
+
 def canonicalize_labels(lines: list[str]) -> list[str]:
     """
     Canonicalize labels by renaming them by order of appearance.
@@ -583,6 +618,7 @@ def normalize_block(lines: list[str]) -> str:
     lines = canonicalize_number_literals(lines)
     lines = canonicalize_function_definition_headers(lines)
     lines = canonicalize_register_references_in_function_block(lines)
+    lines = strip_unreferenced_label_definitions(lines)
     lines = canonicalize_labels(lines)
     lines = normalize_not_not_if_patterns(lines)
 

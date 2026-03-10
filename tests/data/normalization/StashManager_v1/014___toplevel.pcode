@@ -68,4 +68,4 @@ GetMember
 Push 3
 Push "ASSetPropFlags"
 CallFunction
-L0:Pop
+Pop

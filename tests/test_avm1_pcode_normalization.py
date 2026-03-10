@@ -590,6 +590,66 @@ def test_normalize_not_not_if_patterns_with_label_on_not():
     """)
 
 
+def test_list_label_references():
+    pcode_sample = sample_text_lines("""
+        loc454b:DefineFunction "foo", 0 {
+        Push 1
+        If loc07b7
+        Jump loc07c7
+        loc07b7:Push register7
+        Increment
+        StoreRegister 7
+        Pop
+        Jump loc0698
+        loc07c7:Push register4
+        Not
+        If loc08fd
+        }
+    """)
+
+    labels = avm1_pcode_normalization.list_label_references(pcode_sample)
+
+    assert labels == {"loc07b7", "loc07c7", "loc0698", "loc08fd"}
+
+
+def test_strip_unreferenced_labels():
+    pcode_sample = sample_text_lines("""
+        loc454b:DefineFunction "foo", 0 {
+        Push 1
+        If loc07b7
+        Jump loc07c7
+        loc07b7:Push register7
+        Increment
+        StoreRegister 7
+        Pop
+        Jump loc0698
+        loc07c7:Push register4
+        Not
+        If loc08fd
+        }
+    """)
+
+    stripped = avm1_pcode_normalization.strip_unreferenced_label_definitions(pcode_sample)
+
+    # Note that references themselves are not touched, even if the label definition is not found.
+
+    assert stripped == sample_text_lines("""
+        DefineFunction "foo", 0 {
+        Push 1
+        If loc07b7
+        Jump loc07c7
+        loc07b7:Push register7
+        Increment
+        StoreRegister 7
+        Pop
+        Jump loc0698
+        loc07c7:Push register4
+        Not
+        If loc08fd
+        }
+    """)
+
+
 def test_canonicalize_labels():
     pcode_sample = sample_text_lines("""
         If loc07b7
