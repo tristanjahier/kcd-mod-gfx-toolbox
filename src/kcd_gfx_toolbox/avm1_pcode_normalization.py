@@ -257,6 +257,35 @@ def line_has_label(line: str) -> bool:
     return LABEL_PREFIXED_LINE_RE.match(line) is not None
 
 
+def canonicalize_whitespace(lines: list[str]) -> list[str]:
+    """
+    Strip leading and trailing whitespace, normalize spacing between tokens and drop blank lines.
+    """
+    canonicalized_lines: list[str] = []
+
+    for line in lines:
+        canonicalized_line = ""
+        labelless_line, label = extract_label_from_line(line)
+
+        for _, token in tokenize_line(labelless_line):
+            if token != ",":
+                canonicalized_line += " " + token
+            else:
+                canonicalized_line += ","
+
+        canonicalized_line = canonicalized_line.strip()
+
+        if label:
+            canonicalized_line = f"{label}:{canonicalized_line}"
+
+        if canonicalized_line == "":
+            continue
+
+        canonicalized_lines.append(canonicalized_line)
+
+    return canonicalized_lines
+
+
 def canonicalize_push_lines(lines: list[str]) -> list[str]:
     """
     Canonicalize "Push" lines with multiple operands into single-operand "Push" lines.
@@ -613,7 +642,7 @@ def normalize_block(lines: list[str]) -> str:
     """
     Normalize a p-code block with multiple obscure techniques.
     """
-    lines = [ln.rstrip() for ln in lines if ln.strip()]  # remove blank lines
+    lines = canonicalize_whitespace(lines)
     lines = canonicalize_push_lines(lines)
     lines = canonicalize_number_literals(lines)
     lines = canonicalize_function_definition_headers(lines)

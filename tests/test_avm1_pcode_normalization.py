@@ -276,6 +276,33 @@ def test_line_has_label_false():
     assert avm1_pcode_normalization.line_has_label("Jump loc055c") is False
 
 
+def test_canonicalize_whitespace():
+    pcode_sample = sample_text_lines("""
+        Push register2
+        If loc4bsdf4
+        L200:Push register1,"GetWeight"
+        StoreRegister  4
+         Push register2
+        Push "Concat3"
+        Pop
+
+        DefineFunction2 "computeTake", 2 ,  3 ,   false,false,true,false ,true ,false,true, false, false, 1, "remaining", 2,"availableCount"{
+        loc0698:Push   register7,   "Toto"
+    """)
+
+    assert avm1_pcode_normalization.canonicalize_whitespace(pcode_sample) == sample_text_lines("""
+        Push register2
+        If loc4bsdf4
+        L200:Push register1, "GetWeight"
+        StoreRegister 4
+        Push register2
+        Push "Concat3"
+        Pop
+        DefineFunction2 "computeTake", 2, 3, false, false, true, false, true, false, true, false, false, 1, "remaining", 2, "availableCount" {
+        loc0698:Push register7, "Toto"
+    """)
+
+
 def test_canonicalize_push_lines():
     pcode_sample = sample_text_lines("""
         Push register2
