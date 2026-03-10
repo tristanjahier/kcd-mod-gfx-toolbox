@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
 from __future__ import annotations
-from typing import Annotated, cast
+from typing import Annotated, Literal, cast
 import typer
 from .gfx_diff import (
+    GfxDiffSet,
     GfxDiffTreeNode,
     GfxDiffTreeNodeType,
     GfxScript,
@@ -182,6 +183,66 @@ def collect_normalization_stats_from_cache(blocks_dir: Path) -> NormalizationSta
     )
 
 
+def display_detailed_diff(
+    diffset: GfxDiffSet, sort_order: Literal["default", "changes_desc", "changes_asc"] = "default", max_lines: int = 0
+):
+    """
+    Display line-by-line differences for each modified script block.
+    """
+    console = Console()
+    line_count = 0
+
+    sorted_pairs: list[tuple[GfxScript, GfxScriptBlock]] = []
+
+    scripts = sorted(diffset.get_scripts_with_differing_blocks(), key=lambda s: (s.side_a_path, s.side_b_path))
+
+    for script in scripts:
+        blocks = sorted(
+            diffset.paired_scripts_block_diffs[script].paired_blocks,
+            key=lambda b: (-b.refined_changed, b.side_a_name, b.side_b_name),
+        )
+
+        for block in blocks:
+            if block.is_paired() and block.unified_diff:
+                sorted_pairs.append((script, block))
+
+    if sort_order == "changes_asc":
+        sorted_pairs.sort(key=lambda p: (p[1].refined_changed, p[1].side_a_name, p[1].side_b_name))
+    elif sort_order == "changes_desc":
+        sorted_pairs.sort(key=lambda p: (-p[1].refined_changed, p[1].side_a_name, p[1].side_b_name))
+
+    for script, block in sorted_pairs:
+        if line_count > 0:
+            console.line()
+            line_count += 1
+
+        for line in block.unified_diff:
+            line = line.rstrip("\n")
+
+            if max_lines != 0 and line_count >= max_lines:
+                console.print(
+                    f"[bold yellow]---- Diff details truncated at {line_count} lines. Use [italic]--details-truncate=0[/italic] to remove this limit. ----[/bold yellow]"
+                )
+                return
+
+            if line.startswith("---"):
+                line = f"--- a/{script.side_a_path.as_posix()}:{block.side_a_name}"
+                console.print(f"[bold]{line}[/bold]", highlight=False)
+            elif line.startswith("+++"):
+                line = f"+++ b/{script.side_b_path.as_posix()}:{block.side_b_name}"
+                console.print(f"[bold]{line}[/bold]", highlight=False)
+            elif line.startswith("@@"):
+                console.print(f"[cyan]{line}[/cyan]", highlight=False)
+            elif line.startswith("+"):
+                console.print(f"[green]{line}[/green]", highlight=False)
+            elif line.startswith("-"):
+                console.print(f"[red]{line}[/red]", highlight=False)
+            else:
+                console.print(line, highlight=False)
+
+            line_count += 1
+
+
 def command(
     file_a: Annotated[Path, typer.Argument(help="The left (A) file of the comparison.")],
     file_b: Annotated[Path, typer.Argument(help="The right (B) file of the comparison.")],
@@ -203,6 +264,24 @@ def command(
             help="Enable to reuse cached normalized blocks. Disable to force re-normalization.",
         ),
     ] = False,
+    show_detailed_diff: Annotated[
+        bool, typer.Option("--detailed", help="Show line-by-line differences for each modified script block.")
+    ] = False,
+    truncate_detailed_diff: Annotated[
+        int,
+        typer.Option(
+            "--details-truncate",
+            min=0,
+            help="Truncate display of diff details after N lines. 0 = unlimited.",
+        ),
+    ] = 256,
+    sort_detailed_diff: Annotated[
+        Literal["default", "changes_desc", "changes_asc"],
+        typer.Option(
+            "--details-sort",
+            help="Control sort order for detailed diffs. 'changes_desc' shows most modified blocks first, 'changes_asc' does the opposite. 'default' groups by script (sorted alphabetically), then orders blocks by most modified first.",
+        ),
+    ] = "default",
 ):
     """
     Compare scripts between two GFx files to surface meaningful changes through normalization.
@@ -454,3 +533,7 @@ def command(
     unfold_diff_tree_in_table(diffset.to_tree(), diff_table)
 
     console.print(diff_table)
+
+    if show_detailed_diff:
+        console.line()
+        display_detailed_diff(diffset, sort_order=sort_detailed_diff, max_lines=truncate_detailed_diff)
