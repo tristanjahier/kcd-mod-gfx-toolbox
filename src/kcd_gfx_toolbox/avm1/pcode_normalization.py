@@ -228,7 +228,8 @@ def canonicalize_numeric_literals(lines: list[PcodeLine]) -> list[PcodeLine]:
 
             if re.fullmatch(r"-?\d+\.0", value):
                 value = value[:-2]
-            elif value == "-0":
+
+            if value == "-0":
                 value = "0"
 
             canonicalized_operands.append(PcodeOperand(type=operand.type, value=value))

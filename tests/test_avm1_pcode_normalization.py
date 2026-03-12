@@ -267,6 +267,7 @@ def test_canonicalize_numeric_literals():
         Pop
         Push "type", 3.0, register7, "GetType"
         CallMethod
+        Push -0.0, 8.2
     """)
 
     canonicalized = canonicalize_numeric_literals(pcode_sample.lines)
@@ -279,6 +280,7 @@ def test_canonicalize_numeric_literals():
         Pop
         Push "type", 3, register7, "GetType"
         CallMethod
+        Push 0, 8.2
     """)
 
 
