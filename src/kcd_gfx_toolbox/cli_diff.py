@@ -13,7 +13,7 @@ from .gfx_diff import (
     refine_block_diffs,
 )
 from .extraction import extract_gfx_contents, extraction_cache_key, resolve_ffdec
-from .avm1_pcode_normalization import NormalizationStats, normalize_file
+from .avm1.pcode_normalization import NormalizationStats, normalize_file
 from .file_diff import diff_file_trees_basic
 from .utils import AnsiColor, ensure_empty_dir, print_error, get_temp_dir, print_warning
 from pathlib import Path

@@ -1,5 +1,6 @@
 from textwrap import dedent
 from pathlib import Path
+from kcd_gfx_toolbox.avm1.pcode_parsing import PcodeBlock, parse_pcode_text
 
 _PROJECT_ROOT_PATH: Path | None = None
 
@@ -34,3 +35,10 @@ def list_data_files(rel_path: str) -> list[Path]:
     files = [p for p in Path(get_test_data_dir() / rel_path).iterdir() if p.is_file()]
     files.sort(key=lambda p: p.name)
     return files
+
+
+def sample_pcode(text: str) -> PcodeBlock:
+    """
+    Read and parse a pcode text.
+    """
+    return parse_pcode_text(text)

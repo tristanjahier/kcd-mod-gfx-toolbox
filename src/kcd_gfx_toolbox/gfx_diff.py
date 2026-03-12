@@ -5,7 +5,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import cast
 from .utils import list_tree_files, read_file_lines
-from .avm1_pcode_alignment import align_labels_in_text, align_registers_in_text
+from .avm1.pcode_alignment import align_labels_in_text, align_registers_in_text
 from .file_diff import FileChange, diff_file_trees, diff_texts, format_path_rename_git_style
 
 

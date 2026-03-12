@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Annotated
 import typer
-from .avm1_pcode_normalization import normalize_file
+from .avm1.pcode_normalization import normalize_file
 from .utils import AnsiColor, print_error
 
 

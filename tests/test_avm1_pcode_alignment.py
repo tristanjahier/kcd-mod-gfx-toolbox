@@ -1,4 +1,4 @@
-from kcd_gfx_toolbox.avm1_pcode_alignment import (
+from kcd_gfx_toolbox.avm1.pcode_alignment import (
     neutralize_labels_in_line,
     extract_jump_target_label_from_line,
     neutralize_registers_in_line,

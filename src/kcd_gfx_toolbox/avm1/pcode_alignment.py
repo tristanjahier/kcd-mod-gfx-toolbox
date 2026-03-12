@@ -1,13 +1,13 @@
 from collections import Counter, defaultdict
 import difflib
-from .avm1_pcode_normalization import (
+from .pcode_parsing import tokenize_line
+from .pcode_utils import (
     LABEL_REFERENCED_LINE_RE,
     PUSH_REGISTER_RE,
     REGISTER_REFERENCE_RE,
     STORE_REGISTER_RE,
     extract_label_from_line,
     strip_label,
-    tokenize_line,
 )
 
 
