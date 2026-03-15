@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import cast
 from .utils import list_tree_files, read_file_lines
 from .avm1.pcode_alignment import align_labels_in_text, align_registers_in_text
-from .file_diff import FileChange, diff_file_trees, diff_texts, format_path_rename_git_style
+from .file_diff import FileDiff, diff_file_trees, diff_texts, format_path_rename_git_style
 
 
 @dataclass(frozen=True)
@@ -55,20 +55,20 @@ class GfxDiffSet:
     def set_script_block_diff(
         self,
         script: GfxScript,
-        changes: list[FileChange],
+        file_diffs: list[FileDiff],
         only_in_tree_a: list[Path],
         only_in_tree_b: list[Path],
     ):
         if script not in self.paired_scripts:
             raise ValueError(f"Script path '{script}' is unknown.")
 
-        for fch in changes:
+        for fd in file_diffs:
             self.paired_scripts_block_diffs.setdefault(script, ScriptDiffSet()).paired_blocks.add(
-                # Convert FileChange to GfxScriptBlock
+                # Convert FileDiff to GfxScriptBlock
                 GfxScriptBlock(
-                    side_a_name=fch.path.stem,
-                    changed=fch.changed,
-                    side_b_name=fch.path_new.stem if fch.path_new else fch.path.stem,
+                    side_a_name=fd.path.stem,
+                    changed=fd.lines_changed,
+                    side_b_name=fd.path_new.stem if fd.path_new else fd.path.stem,
                 )
             )
 
@@ -214,7 +214,7 @@ def diff_normalized_script_trees(
 
         script_normalized_dir = normalization_dir_a / script_path_in_a
         script_blocks_on_side_a = len(list_tree_files(script_normalized_dir))
-        best_match: tuple[float, Path, tuple[list[FileChange], list[Path], list[Path]]] | None = None
+        best_match: tuple[float, Path, tuple[list[FileDiff], list[Path], list[Path]]] | None = None
 
         for candidate in candidates:
             candidate_normalized_dir = normalization_dir_b / candidate
@@ -269,7 +269,8 @@ def refine_block_diffs(diffset: GfxDiffSet, normalization_dir_a: Path, normaliza
 
             block_b = align_labels_in_text(block_b, anchor_lines=block_a)
             block_b = align_registers_in_text(block_b, anchor_lines=block_a)
-            block.refined_changed = diff_texts(block_a, block_b)
+            text_diff = diff_texts(block_a, block_b)
+            block.refined_changed = text_diff.lines_changed
             block.unified_diff = list(unified_diff(block_a, block_b))
 
     return diffset

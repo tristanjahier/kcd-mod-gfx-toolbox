@@ -1,17 +1,30 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import difflib
 from pathlib import Path
+from typing import NamedTuple
 from .utils import list_tree_files, read_file_lines, sha256_file
 
 
+class TextDiffSpan(NamedTuple):
+    a: tuple[int, int]
+    b: tuple[int, int]
+
+
 @dataclass(frozen=True)
-class FileChange:
+class TextDiff:
+    spans: list[TextDiffSpan]
+    lines_changed: int
+
+
+@dataclass(frozen=True)
+class FileDiff:
     """
     A small container object for file changes.
     """
 
     path: Path
-    changed: int
+    lines_changed: int
+    spans: list[TextDiffSpan] = field(default_factory=list, hash=False)
     path_new: Path | None = None
 
 
@@ -48,13 +61,14 @@ def diff_file_trees_basic(dir1: Path, dir2: Path) -> tuple[list[Path], list[Path
     return different, only_in_dir1, only_in_dir2
 
 
-def diff_texts(text1_lines: list[str], text2_lines: list[str]) -> int:
+def diff_texts(text1_lines: list[str], text2_lines: list[str]) -> TextDiff:
     """
     Compare two sets of text lines.
     Return number of touched lines (inserted, deleted or replaced),
     counting replacements as max(old_span, new_span).
     """
     seqmatch = difflib.SequenceMatcher(None, text1_lines, text2_lines, autojunk=False)
+    diff_spans: list[TextDiffSpan] = []
     changed = 0
 
     for tag, i1, i2, j1, j2 in seqmatch.get_opcodes():
@@ -73,14 +87,16 @@ def diff_texts(text1_lines: list[str], text2_lines: list[str]) -> int:
         elif tag == "insert":
             changed += span_2
 
-    return changed
+        diff_spans.append(TextDiffSpan((i1, i2), (j1, j2)))
+
+    return TextDiff(spans=diff_spans, lines_changed=changed)
 
 
 def diff_file_trees(
     dir1: Path,
     dir2: Path,
     include_paths: set[Path] | None = None,
-) -> tuple[list[FileChange], list[Path], list[Path], list[Path]]:
+) -> tuple[list[FileDiff], list[Path], list[Path], list[Path]]:
     """
     Perform a diff between two directories and their subtrees.
     Return a tuple of:
@@ -102,7 +118,7 @@ def diff_file_trees(
 
     common = sorted(dir1_files & dir2_files)
 
-    changes: list[FileChange] = []
+    changes: list[FileDiff] = []
 
     equals: list[Path] = []
 
@@ -117,10 +133,10 @@ def diff_file_trees(
 
         file1_lines = read_file_lines(file1)
         file2_lines = read_file_lines(file2)
-        changed = diff_texts(file1_lines, file2_lines)
+        text_diff = diff_texts(file1_lines, file2_lines)
 
-        if changed > 0:
-            changes.append(FileChange(path=rel_path, changed=changed))
+        if text_diff.lines_changed > 0:
+            changes.append(FileDiff(path=rel_path, lines_changed=text_diff.lines_changed, spans=text_diff.spans))
         else:
             equals.append(rel_path)
 
@@ -155,7 +171,7 @@ def diff_file_trees(
             unmatched_dir2.discard(p2)
 
             # Pure rename change.
-            changes.append(FileChange(path=p1, path_new=p2, changed=0))
+            changes.append(FileDiff(path=p1, path_new=p2, lines_changed=0))
 
     # Finally, try to pair files with different paths and whose contents are
     # not identical but highly similar and therefore comparable (worth a diff).
@@ -210,9 +226,13 @@ def diff_file_trees(
         unmatched_dir1.discard(path_in_dir1)
         unmatched_dir2.discard(best_candidate)
 
-        changed = diff_texts(file1_lines, read_file_from_dir2(best_candidate))
+        text_diff = diff_texts(file1_lines, read_file_from_dir2(best_candidate))
 
-        changes.append(FileChange(path=path_in_dir1, changed=changed, path_new=best_candidate))
+        changes.append(
+            FileDiff(
+                path=path_in_dir1, path_new=best_candidate, lines_changed=text_diff.lines_changed, spans=text_diff.spans
+            )
+        )
 
     return changes, sorted(unmatched_dir1), sorted(unmatched_dir2), equals
 
