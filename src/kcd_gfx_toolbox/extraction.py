@@ -2,6 +2,7 @@ from pathlib import Path
 import platform
 import shutil
 import subprocess
+from .swd import SwdFile, parse_swd_file
 from .utils import sha256_str
 
 
@@ -32,7 +33,7 @@ def extraction_cache_key(path: Path) -> str:
     return sha256_str(sig)
 
 
-def extract_gfx_contents(ffdec_bin_path: Path, file_path: Path, output_dir: Path):
+def extract_gfx_pcode(ffdec_bin_path: Path, file_path: Path, output_dir: Path):
     return subprocess.run(
         [str(ffdec_bin_path), "-format", "script:pcode", "-export", "script", str(output_dir), str(file_path)],
         stdin=subprocess.DEVNULL,
@@ -41,3 +42,63 @@ def extract_gfx_contents(ffdec_bin_path: Path, file_path: Path, output_dir: Path
         text=True,
         check=True,
     )
+
+
+def extract_gfx_actionscript(ffdec_bin_path: Path, file_path: Path, output_dir: Path):
+    return subprocess.run(
+        [str(ffdec_bin_path), "-format", "script:as", "-export", "script", str(output_dir), str(file_path)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+
+def extract_gfx_debug_swd(ffdec_bin_path: Path, file_path: Path, output_dir: Path, pcode: bool):
+    debug_file_name = f"{file_path.stem}_debug{'.pcode' if pcode else '.as'}"
+    output_path = output_dir / debug_file_name
+
+    result = subprocess.run(
+        [
+            str(ffdec_bin_path),
+            "-enabledebugging",
+            "-generateswd",
+            *(["-pcode"] if pcode else []),
+            str(file_path),
+            str(output_path),
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    # A .swd file has been created along with output_path. This is the target file.
+    output_path.unlink()
+
+    return result
+
+
+def extract_gfx_contents(ffdec_bin_path: Path, file_path: Path, output_dir: Path):
+    extract_gfx_pcode(ffdec_bin_path, file_path, output_dir)
+    extract_gfx_actionscript(ffdec_bin_path, file_path, output_dir)
+    extract_gfx_debug_swd(ffdec_bin_path, file_path, output_dir, pcode=True)
+    extract_gfx_debug_swd(ffdec_bin_path, file_path, output_dir, pcode=False)
+
+
+def read_gfx_debug_swd_files(file_path: Path, output_dir: Path) -> tuple[SwdFile, SwdFile]:
+    """
+    Read the p-code and ActionScript .swd debug files extracted for a given GFx file.
+    """
+    swd_pcode_file = output_dir / f"{file_path.stem}_debug.pcode.swd"
+    swd_actionscript_file = output_dir / f"{file_path.stem}_debug.as.swd"
+
+    if not swd_pcode_file.is_file():
+        raise FileNotFoundError(f"SWD file not found: {swd_pcode_file}.")
+
+    if not swd_actionscript_file.is_file():
+        raise FileNotFoundError(f"SWD file not found: {swd_actionscript_file}.")
+
+    return (parse_swd_file(swd_pcode_file), parse_swd_file(swd_actionscript_file))

@@ -35,11 +35,14 @@ def print_warning(message: str | BaseException):
     print(f"{AnsiColor.YELLOW}WARNING: {message}{AnsiColor.RESET}", file=sys.stderr)
 
 
-def list_tree_files(path: Path) -> set[Path]:
+def list_tree_files(path: Path, glob: str | None = None) -> set[Path]:
     """
     Return a set of all file paths in a directory subtree, relative to the root.
     """
-    return {p.relative_to(path) for p in path.rglob("*") if p.is_file()}
+    if glob is None:
+        glob = "**/*"
+
+    return {p.relative_to(path) for p in path.glob(glob) if p.is_file()}
 
 
 def sha256_file(path: Path) -> str:

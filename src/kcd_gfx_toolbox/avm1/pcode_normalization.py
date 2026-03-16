@@ -516,19 +516,20 @@ def normalize_block(block: PcodeBlock) -> PcodeBlock:
 
 
 @dataclass(frozen=True)
-class NormalizationStats:
+class NormalizationResult:
+    blocks: list[PcodeBlock]
     total_blocks: int
     named_blocks: int
     anonymous_blocks: int
     toplevel_blocks: int
 
 
-def normalize_file(input_file: Path, output_dir: Path) -> NormalizationStats:
+def normalize_file(input_file: Path, output_dir: Path) -> NormalizationResult:
     """
     Split a p-code file into multiple normalized blocks and write them in the output directory.
     """
     pcode_file = parse_pcode_file(input_file)
-    blocks = split_into_blocks(pcode_file)
+    blocks = [normalize_block(block) for block in split_into_blocks(pcode_file)]
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -537,7 +538,7 @@ def normalize_file(input_file: Path, output_dir: Path) -> NormalizationStats:
     for idx, block in enumerate(blocks, start=1):
         assert block.name is not None
         block_file = output_dir / f"{idx:03d}_{block.name}.pcode"
-        block_file.write_text(normalize_block(block).render() + "\n", encoding="utf-8")
+        block_file.write_text(block.render() + "\n", encoding="utf-8")
 
         if block.name.startswith("__toplevel"):
             gap_count += 1
@@ -546,7 +547,8 @@ def normalize_file(input_file: Path, output_dir: Path) -> NormalizationStats:
         else:
             named_count += 1
 
-    return NormalizationStats(
+    return NormalizationResult(
+        blocks=blocks,
         total_blocks=len(blocks),
         named_blocks=named_count,
         anonymous_blocks=anon_count,

@@ -1,7 +1,8 @@
 from dataclasses import dataclass, field
 import difflib
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, TypeAlias
+import itertools
 from .utils import list_tree_files, read_file_lines, sha256_file
 
 
@@ -28,7 +29,7 @@ class FileDiff:
     path_new: Path | None = None
 
 
-def diff_file_trees_basic(dir1: Path, dir2: Path) -> tuple[list[Path], list[Path], list[Path]]:
+def diff_file_trees_basic(dir1: Path, dir2: Path, glob: str | None = None) -> tuple[list[Path], list[Path], list[Path]]:
     """
     Perform a basic diff between two directories and their subtrees.
     Return a tuple of:
@@ -36,8 +37,8 @@ def diff_file_trees_basic(dir1: Path, dir2: Path) -> tuple[list[Path], list[Path
         2. file paths only present in directory 1
         3. file paths only present in directory 2
     """
-    dir1_files = list_tree_files(dir1)
-    dir2_files = list_tree_files(dir2)
+    dir1_files = list_tree_files(dir1, glob)
+    dir2_files = list_tree_files(dir2, glob)
 
     only_in_dir1 = sorted(dir1_files - dir2_files)
     only_in_dir2 = sorted(dir2_files - dir1_files)
@@ -299,3 +300,113 @@ def format_path_rename_git_style(path_a: Path, path_b: Path | None) -> str:
         + ("/" if suffix_parts else "")
         + "/".join(reversed(suffix_parts))
     )
+
+
+TextHunk: TypeAlias = list[tuple[int, str]]
+
+
+def cut_text_hunks_with_context(
+    text_lines: list[str], selection: list[int] | set[int], context_length=3, merge: bool = False
+) -> list[TextHunk]:
+    """
+    Extract text hunks (groups of consecutive lines) around a subselection of line indices.
+    Capture up to `context_length` lines of context before and after the selected lines.
+    If `merge` is True, adjacent or overlapping hunks are merged.
+    """
+    hunks: list[TextHunk] = []
+
+    if not selection:
+        return hunks
+
+    selection = sorted(selection)
+
+    spans: list[slice] = []
+    current_sequence: list[int] = []
+
+    for selected_line in selection:
+        if not current_sequence or current_sequence[-1] == (selected_line - 1):
+            current_sequence.append(selected_line)
+            continue
+
+        spans.append(slice(current_sequence[0], current_sequence[-1] + 1))
+        current_sequence = [selected_line]
+
+    spans.append(slice(current_sequence[0], current_sequence[-1] + 1))
+
+    for span in spans:
+        if span.start < 0 or span.stop > len(text_lines):
+            raise ValueError(f"Line selection contains an out-of-bounds span: [{span.start}:{span.stop}].")
+
+        hunk: TextHunk = []
+
+        for i in range(span.start - context_length, span.start):
+            if i >= 0:
+                hunk.append((i, text_lines[i]))
+
+        hunk.extend(list(enumerate(text_lines[span], start=span.start)))
+
+        for i in range(span.stop, span.stop + context_length):
+            if i < len(text_lines):
+                hunk.append((i, text_lines[i]))
+
+        hunks.append(hunk)
+
+    hunks.sort(key=lambda h: h[0][0])
+
+    # Merge touching/overlapping hunks if required.
+    if not merge or len(hunks) < 2:
+        return hunks
+
+    merged_hunks = []
+    last_hunk = None
+
+    for hunk in hunks:
+        if last_hunk is None:
+            last_hunk = hunk
+            continue
+
+        hunk_first_line = hunk[0][0]
+        last_hunk_last_line = last_hunk[-1][0]
+
+        if last_hunk_last_line >= hunk_first_line:
+            last_hunk.extend(hunk)
+            last_hunk = list(dict.fromkeys(last_hunk).keys())  # deduplicate
+
+        else:
+            merged_hunks.append(last_hunk)
+            last_hunk = hunk
+
+    merged_hunks.append(last_hunk)
+
+    return merged_hunks
+
+
+def align_hunk_pairs(hunks_1: list[TextHunk], hunks_2: list[TextHunk]) -> list[tuple[TextHunk, TextHunk]]:
+    """
+    Align two lists of text hunks by pairing similar hunks together. Order is preserved.
+    Hunk pairs cannot cross — a hunk earlier in the list cannot be paired with a hunk later than one already paired.
+    Unmatched hunks are paired with an empty hunk on the other side.
+    """
+    hunk_pairs: list[tuple[TextHunk, TextHunk]] = []
+
+    seqmatch = difflib.SequenceMatcher(
+        None,
+        ["\n".join((txt for _, txt in h)) for h in hunks_1],
+        ["\n".join((txt for _, txt in h)) for h in hunks_2],
+        autojunk=False,
+    )
+
+    def _flatten_hunk_list(hunk_list: list[TextHunk]) -> TextHunk:
+        return list(itertools.chain.from_iterable(hunk_list))
+
+    for tag, i1, i2, j1, j2 in seqmatch.get_opcodes():
+        if tag == "equal":
+            hunk_pairs.append((_flatten_hunk_list(hunks_1[i1:i2]), _flatten_hunk_list(hunks_2[j1:j2])))
+        elif tag == "replace":
+            hunk_pairs.append((_flatten_hunk_list(hunks_1[i1:i2]), _flatten_hunk_list(hunks_2[j1:j2])))
+        elif tag == "insert":
+            hunk_pairs.append(([], _flatten_hunk_list(hunks_2[j1:j2])))
+        elif tag == "delete":
+            hunk_pairs.append((_flatten_hunk_list(hunks_1[i1:i2]), []))
+
+    return hunk_pairs

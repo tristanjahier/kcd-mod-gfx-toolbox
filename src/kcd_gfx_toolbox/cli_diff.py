@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 
 from __future__ import annotations
+from itertools import zip_longest
+import re
 from typing import Annotated, Literal, cast
 import typer
+from .avm1.pcode_parsing import PcodeBlock
+from .swd import build_pcode_to_actionscript_line_map, propagate_mapped_lines_to_subsequent_unmapped_lines
 from .gfx_diff import (
     GfxDiffSet,
     GfxDiffTreeNode,
@@ -12,16 +16,28 @@ from .gfx_diff import (
     diff_normalized_script_trees,
     refine_block_diffs,
 )
-from .extraction import extract_gfx_contents, extraction_cache_key, resolve_ffdec
-from .avm1.pcode_normalization import NormalizationStats, normalize_file
-from .file_diff import diff_file_trees_basic
-from .utils import AnsiColor, ensure_empty_dir, print_error, get_temp_dir, print_warning
+from .extraction import extract_gfx_contents, extraction_cache_key, read_gfx_debug_swd_files, resolve_ffdec
+from .avm1.pcode_normalization import NormalizationResult, normalize_file
+from .file_diff import (
+    align_hunk_pairs,
+    cut_text_hunks_with_context,
+    diff_file_trees_basic,
+)
+from .utils import (
+    AnsiColor,
+    ensure_empty_dir,
+    print_error,
+    get_temp_dir,
+    print_warning,
+    read_file_lines,
+)
 from pathlib import Path
 import shutil
 import subprocess
 from rich.console import Console
 from rich.table import Table
 from rich import box
+from rich.rule import Rule
 
 
 def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table):
@@ -125,7 +141,7 @@ def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table):
         _render_node(child, is_last_child=is_last)
 
 
-def normalize_script(script_src: Path, output_dir: Path, read_cache: bool) -> NormalizationStats:
+def normalize_script(script_src: Path, output_dir: Path, read_cache: bool) -> NormalizationResult:
     """
     Perform normalization for a given script, or read the cached data if applicable.
     """
@@ -146,7 +162,7 @@ def normalize_script(script_src: Path, output_dir: Path, read_cache: bool) -> No
         raise typer.Exit(code=1)
 
 
-def collect_normalization_stats_from_cache(blocks_dir: Path) -> NormalizationStats:
+def collect_normalization_stats_from_cache(blocks_dir: Path) -> NormalizationResult:
     """
     Compute normalization stats from an existing normalized-blocks directory.
     """
@@ -175,7 +191,8 @@ def collect_normalization_stats_from_cache(blocks_dir: Path) -> NormalizationSta
     if total_blocks == 0:
         raise FileNotFoundError(f"Normalization cache directory is empty: {blocks_dir}.")
 
-    return NormalizationStats(
+    return NormalizationResult(
+        blocks=[],  # to do: fix this later
         total_blocks=total_blocks,
         named_blocks=named_blocks,
         anonymous_blocks=anonymous_blocks,
@@ -183,7 +200,7 @@ def collect_normalization_stats_from_cache(blocks_dir: Path) -> NormalizationSta
     )
 
 
-def display_detailed_diff(
+def display_detailed_diff_in_pcode(
     diffset: GfxDiffSet, sort_order: Literal["default", "changes_desc", "changes_asc"] = "default", max_lines: int = 0
 ):
     """
@@ -243,6 +260,242 @@ def display_detailed_diff(
             line_count += 1
 
 
+def display_detailed_diff_in_actionscript(
+    file_a: Path,
+    extraction_dir_a: Path,
+    normalized_script_blocks_a: dict[Path, list[PcodeBlock]],
+    file_b: Path,
+    extraction_dir_b: Path,
+    normalized_script_blocks_b: dict[Path, list[PcodeBlock]],
+    diffset: GfxDiffSet,
+    sort_order: Literal["default", "changes_desc", "changes_asc"] = "default",
+    max_lines: int = 0,
+):
+    console = Console()
+    line_count = 0
+
+    sorted_pairs: list[tuple[GfxScript, GfxScriptBlock]] = []
+
+    scripts = sorted(diffset.get_scripts_with_differing_blocks(), key=lambda s: (s.side_a_path, s.side_b_path))
+
+    for script in scripts:
+        blocks = sorted(
+            diffset.paired_scripts_block_diffs[script].paired_blocks,
+            key=lambda b: (-b.refined_changed, b.side_a_name, b.side_b_name),
+        )
+
+        for block in blocks:
+            if block.is_paired():
+                sorted_pairs.append((script, block))
+
+    if sort_order == "changes_asc":
+        sorted_pairs.sort(key=lambda p: (p[1].refined_changed, p[1].side_a_name, p[1].side_b_name))
+    elif sort_order == "changes_desc":
+        sorted_pairs.sort(key=lambda p: (-p[1].refined_changed, p[1].side_a_name, p[1].side_b_name))
+
+    # Cache for ActionScript sources.
+    actionscript_cache: dict[Path, list[str]] = {}
+
+    def _read_actionscript_source_lines(file: Path) -> list[str]:
+        if file not in actionscript_cache:
+            if not file.is_file():
+                print_error(f"ActionScript file not found: {file}.")
+                raise typer.Exit(code=1)
+            actionscript_cache[file] = read_file_lines(file)
+
+        return actionscript_cache[file]
+
+    try:
+        file_a_swd_pcode, file_a_swd_as = read_gfx_debug_swd_files(file_a, extraction_dir_a)
+        file_b_swd_pcode, file_b_swd_as = read_gfx_debug_swd_files(file_b, extraction_dir_b)
+    except FileNotFoundError as e:
+        print_error(e)
+        raise typer.Exit(code=1)
+
+    file_a_pcode_to_as_line_map = build_pcode_to_actionscript_line_map(
+        file_a_swd_pcode, file_a_swd_as, {script.side_a_path.as_posix().removeprefix("scripts/") for script in scripts}
+    )
+
+    file_b_pcode_to_as_line_map = build_pcode_to_actionscript_line_map(
+        file_b_swd_pcode, file_b_swd_as, {script.side_b_path.as_posix().removeprefix("scripts/") for script in scripts}
+    )
+
+    context_first_block_diff_display = True
+
+    for script, block in sorted_pairs:
+        assert script.side_a_path is not None  # type guard for static analyzers
+        assert script.side_b_path is not None
+        assert block.side_a_name is not None
+        assert block.side_b_name is not None
+
+        if max_lines != 0 and line_count >= max_lines:
+            console.print(
+                Rule(
+                    f"[bold yellow]✀  Diff details truncated at {line_count} lines (soft limit is {max_lines}). Use [italic]--details-truncate=0[/italic] to remove this limit.[/bold yellow]",
+                    align="center",
+                    style="bold yellow",
+                    characters="-",
+                )
+            )
+            return
+
+        script_a_actionscript_lines = _read_actionscript_source_lines(
+            (extraction_dir_a / script.side_a_path).with_suffix(".as")
+        )
+
+        script_b_actionscript_lines = _read_actionscript_source_lines(
+            (extraction_dir_b / script.side_b_path).with_suffix(".as")
+        )
+
+        script_a_name = script.side_a_path.as_posix().removeprefix("scripts/")
+        if script_a_name not in file_a_pcode_to_as_line_map:
+            print_error(f"Script {script_a_name!r} not found in SWD file.")
+            raise typer.Exit(code=1)
+        script_a_pcode_to_as = file_a_pcode_to_as_line_map[script_a_name]
+
+        script_b_name = script.side_b_path.as_posix().removeprefix("scripts/")
+        if script_b_name not in file_b_pcode_to_as_line_map:
+            print_error(f"Script {script_b_name!r} not found in SWD file.")
+            raise typer.Exit(code=1)
+        script_b_pcode_to_as = file_b_pcode_to_as_line_map[script_b_name]
+
+        script_a_blocks = normalized_script_blocks_a.get(script.side_a_path, [])
+        script_b_blocks = normalized_script_blocks_b.get(script.side_b_path, [])
+
+        if block.changed == 0:
+            continue
+
+        if not context_first_block_diff_display:
+            console.line()
+            line_count += 1
+
+        if script.was_renamed():
+            script_title = f"[bold cyan]{script.side_a_path} [white]→[/white] {script.side_b_path}[/bold cyan]"
+        else:
+            script_title = f"[bold cyan]{script.side_a_path}[/bold cyan]"
+
+        if block.was_renamed():
+            block_title = f"[bright_yellow]❖[/bright_yellow] {block.side_a_name} [bright_yellow]→[/bright_yellow] {block.side_b_name}"
+        else:
+            block_title = f"[bright_yellow]❖[/bright_yellow] {block.side_a_name}"
+
+        console.print(
+            Rule(
+                f"[dim white]────[/dim white] {script_title} [dim white]──[/dim white] {block_title}",
+                align="left",
+                style="dim white",
+            )
+        )
+        line_count += 1
+
+        block_name_side_a = re.sub(r"^\d+_", "", block.side_a_name)
+        block_name_side_b = re.sub(r"^\d+_", "", block.side_b_name)
+        block_side_a = next((b for b in script_a_blocks if b.name == block_name_side_a), None)
+        block_side_b = next((b for b in script_b_blocks if b.name == block_name_side_b), None)
+        assert block_side_a is not None
+        assert block_side_b is not None
+
+        # Mapped lines in ActionScript are sparse. Simple naive improvement: propagate mapped
+        # lines to subsequent unmapped lines, within the boundaries of the block.
+        block_a_first_line = min(block_side_a.lines[0].source_lines)
+        block_a_last_line = max(block_side_a.lines[-1].source_lines)
+        block_a_pcode_to_as = propagate_mapped_lines_to_subsequent_unmapped_lines(
+            {k: v for k, v in script_a_pcode_to_as.items() if block_a_first_line <= k <= block_a_last_line}
+        )
+
+        block_b_first_line = min(block_side_b.lines[0].source_lines)
+        block_b_last_line = max(block_side_b.lines[-1].source_lines)
+        block_b_pcode_to_as = propagate_mapped_lines_to_subsequent_unmapped_lines(
+            {k: v for k, v in script_b_pcode_to_as.items() if block_b_first_line <= k <= block_b_last_line}
+        )
+
+        concerned_lines_in_raw_block_a = []
+        concerned_lines_in_raw_block_b = []
+
+        for diff_span_a, diff_span_b in block.diff_spans:
+            for pcode_line in block_side_a.lines[diff_span_a[0] : diff_span_a[1]]:
+                concerned_lines_in_raw_block_a.extend(pcode_line.source_lines)
+
+            for pcode_line in block_side_b.lines[diff_span_b[0] : diff_span_b[1]]:
+                concerned_lines_in_raw_block_b.extend(pcode_line.source_lines)
+
+        concerned_lines_in_raw_block_a = sorted(set(concerned_lines_in_raw_block_a))
+        concerned_lines_in_raw_block_b = sorted(set(concerned_lines_in_raw_block_b))
+
+        concerned_lines_in_as_source_a = []
+        for ln in concerned_lines_in_raw_block_a:
+            as_src_line = block_a_pcode_to_as.get(ln + 1)
+            if as_src_line is not None and as_src_line <= len(script_a_actionscript_lines):
+                concerned_lines_in_as_source_a.append(as_src_line - 1)
+
+        concerned_lines_in_as_source_b = []
+        for ln in concerned_lines_in_raw_block_b:
+            as_src_line = block_b_pcode_to_as.get(ln + 1)
+            if as_src_line is not None and as_src_line <= len(script_b_actionscript_lines):
+                concerned_lines_in_as_source_b.append(as_src_line - 1)
+
+        concerned_lines_in_as_source_a = set(concerned_lines_in_as_source_a)
+        concerned_lines_in_as_source_b = set(concerned_lines_in_as_source_b)
+
+        if not concerned_lines_in_as_source_a and not concerned_lines_in_as_source_b:
+            console.line()
+            console.print("[yellow]Unable to map pcode lines to ActionScript source for this block.[/yellow]")
+            console.line()
+            line_count += 3
+            continue
+
+        block_a_as_hunks = cut_text_hunks_with_context(
+            script_a_actionscript_lines, concerned_lines_in_as_source_a, context_length=5, merge=True
+        )
+        block_b_as_hunks = cut_text_hunks_with_context(
+            script_b_actionscript_lines, concerned_lines_in_as_source_b, context_length=5, merge=True
+        )
+        hunk_pairs = align_hunk_pairs(block_a_as_hunks, block_b_as_hunks)
+
+        for block_a_hunk, block_b_hunk in hunk_pairs:
+            table = Table(box=None, show_edge=False, pad_edge=False, show_header=False, width=console.width)
+            table.add_column("", justify="right", style="dim")
+            table.add_column("", ratio=1, no_wrap=True, overflow="ellipsis")
+            table.add_column("", justify="right", style="dim")
+            table.add_column("", ratio=1, no_wrap=True, overflow="ellipsis")
+
+            table.add_row(style="on #17171a")
+            line_count += 1
+
+            line_pairs = zip_longest(block_a_hunk, block_b_hunk, fillvalue=(None, None))
+
+            for (a_line, a_text), (b_line, b_text) in line_pairs:
+                if a_line is not None:
+                    a_text = (
+                        f"[bold white]{a_text}[/bold white]"
+                        if a_line in concerned_lines_in_as_source_a
+                        else f"[dim white]{a_text}[/dim white]"
+                    )
+                else:
+                    a_line = a_text = ""
+
+                if b_line is not None:
+                    b_text = (
+                        f"[bold white]{b_text}[/bold white]"
+                        if b_line in concerned_lines_in_as_source_b
+                        else f"[dim white]{b_text}[/dim white]"
+                    )
+                else:
+                    b_line = b_text = ""
+
+                table.add_row(f"{a_line:>6}", a_text, f"{b_line:>6}", b_text, style="on #17171a")
+                line_count += 1
+
+            table.add_row(style="on #17171a")
+
+            console.line()
+            console.print(table)
+            console.line()
+            line_count += 3
+
+        context_first_block_diff_display = False
+
+
 def command(
     file_a: Annotated[Path, typer.Argument(help="The left (A) file of the comparison.")],
     file_b: Annotated[Path, typer.Argument(help="The right (B) file of the comparison.")],
@@ -267,6 +520,9 @@ def command(
     show_detailed_diff: Annotated[
         bool, typer.Option("--detailed", help="Show line-by-line differences for each modified script block.")
     ] = False,
+    detailed_diff_format: Annotated[
+        Literal["as", "pcode"], typer.Option("--details-format", help="Set the format for detailed diff.")
+    ] = "as",
     truncate_detailed_diff: Annotated[
         int,
         typer.Option(
@@ -274,7 +530,7 @@ def command(
             min=0,
             help="Truncate display of diff details after N lines. 0 = unlimited.",
         ),
-    ] = 256,
+    ] = 512,
     sort_detailed_diff: Annotated[
         Literal["default", "changes_desc", "changes_asc"],
         typer.Option(
@@ -380,7 +636,7 @@ def command(
 
     print(f"\n{AnsiColor.BLUE}» 2: Searching for file differences{AnsiColor.RESET}\n")
 
-    common, only_in_a, only_in_b = diff_file_trees_basic(extraction_dir_a, extraction_dir_b)
+    common, only_in_a, only_in_b = diff_file_trees_basic(extraction_dir_a, extraction_dir_b, "scripts/**/*.pcode")
 
     common_path_scripts: set[Path] = {p.with_suffix("") for p in common}
     unmatched_a_scripts: set[Path] = {p.with_suffix("") for p in only_in_a}
@@ -426,8 +682,10 @@ def command(
 
     print(f"\n{AnsiColor.BLUE}» 3: Normalizing differing scripts into p-code blocks{AnsiColor.RESET}\n")
 
-    normalization_results_a: list[tuple[Path, NormalizationStats]] = []
-    normalization_results_b: list[tuple[Path, NormalizationStats]] = []
+    normalization_results_a: list[tuple[Path, NormalizationResult]] = []
+    normalization_results_b: list[tuple[Path, NormalizationResult]] = []
+    normalized_script_blocks_a: dict[Path, list[PcodeBlock]] = {}
+    normalized_script_blocks_b: dict[Path, list[PcodeBlock]] = {}
 
     # Preserve tree structure and transform file "XXXX.pcode" into directory "XXXX/".
 
@@ -435,11 +693,13 @@ def command(
         full_path = (extraction_dir_a / script_path).with_suffix(".pcode")
         norm_stats = normalize_script(full_path, normalization_dir_a / script_path, should_read_cache_file_a)
         normalization_results_a.append((script_path, norm_stats))
+        normalized_script_blocks_a[script_path] = norm_stats.blocks
 
     for script_path in common_path_scripts | unmatched_b_scripts:
         full_path = (extraction_dir_b / script_path).with_suffix(".pcode")
         norm_stats = normalize_script(full_path, normalization_dir_b / script_path, should_read_cache_file_b)
         normalization_results_b.append((script_path, norm_stats))
+        normalized_script_blocks_b[script_path] = norm_stats.blocks
 
     print(f"{file_a}:")
 
@@ -536,4 +796,18 @@ def command(
 
     if show_detailed_diff:
         console.line()
-        display_detailed_diff(diffset, sort_order=sort_detailed_diff, max_lines=truncate_detailed_diff)
+
+        if detailed_diff_format == "as":
+            display_detailed_diff_in_actionscript(
+                file_a,
+                extraction_dir_a,
+                normalized_script_blocks_a,
+                file_b,
+                extraction_dir_b,
+                normalized_script_blocks_b,
+                diffset,
+                sort_order=sort_detailed_diff,
+                max_lines=truncate_detailed_diff,
+            )
+        elif detailed_diff_format == "pcode":
+            display_detailed_diff_in_pcode(diffset, sort_order=sort_detailed_diff, max_lines=truncate_detailed_diff)

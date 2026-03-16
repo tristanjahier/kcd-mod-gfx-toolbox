@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import cast
 from .utils import list_tree_files, read_file_lines
 from .avm1.pcode_alignment import align_labels_in_text, align_registers_in_text
-from .file_diff import FileDiff, diff_file_trees, diff_texts, format_path_rename_git_style
+from .file_diff import FileDiff, TextDiffSpan, diff_file_trees, diff_texts, format_path_rename_git_style
 
 
 @dataclass(frozen=True)
@@ -69,6 +69,7 @@ class GfxDiffSet:
                     side_a_name=fd.path.stem,
                     changed=fd.lines_changed,
                     side_b_name=fd.path_new.stem if fd.path_new else fd.path.stem,
+                    diff_spans=fd.spans,
                 )
             )
 
@@ -126,6 +127,7 @@ class GfxScriptBlock:
     side_a_name: str | None = field(default=None, hash=True)
     side_b_name: str | None = field(default=None, hash=True)
     changed: int = field(default=0, compare=False)
+    diff_spans: list[TextDiffSpan] = field(default_factory=list, compare=False)
     refined_changed: int = field(default=0, compare=False)
     unified_diff: list[str] = field(default_factory=list, compare=False)
 
