@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 from itertools import zip_longest
+import json
 import re
 from typing import Annotated, Literal, cast
 import typer
-from .avm1.pcode_parsing import PcodeBlock
+from .avm1.pcode_parsing import PcodeBlock, PcodeLine, parse_pcode_file
 from .swd import build_pcode_to_actionscript_line_map, propagate_mapped_lines_to_subsequent_unmapped_lines
 from .gfx_diff import (
     GfxDiffSet,
@@ -26,6 +27,7 @@ from .file_diff import (
 from .utils import (
     AnsiColor,
     ensure_empty_dir,
+    list_tree_files,
     print_error,
     get_temp_dir,
     print_warning,
@@ -147,7 +149,7 @@ def normalize_script(script_src: Path, output_dir: Path, read_cache: bool) -> No
     """
     if read_cache:
         try:
-            return collect_normalization_stats_from_cache(output_dir)
+            return read_normalized_blocks_from_cache(output_dir)
         except FileNotFoundError:
             print_warning(f"Normalization cache missing: {output_dir}.")
             # Not a fatal error.
@@ -162,24 +164,22 @@ def normalize_script(script_src: Path, output_dir: Path, read_cache: bool) -> No
         raise typer.Exit(code=1)
 
 
-def collect_normalization_stats_from_cache(blocks_dir: Path) -> NormalizationResult:
+def read_normalized_blocks_from_cache(cache_dir: Path) -> NormalizationResult:
     """
     Compute normalization stats from an existing normalized-blocks directory.
     """
-    if not blocks_dir.is_dir():
-        raise FileNotFoundError(f"Missing normalization cache directory: {blocks_dir}.")
+    if not cache_dir.is_dir():
+        raise FileNotFoundError(f"Missing normalization cache directory: {cache_dir}.")
 
+    pcode_blocks: list[PcodeBlock] = []
     total_blocks = named_blocks = anonymous_blocks = toplevel_blocks = 0
 
-    for block_file in blocks_dir.iterdir():
-        if not block_file.is_file() or block_file.suffix.lower() != ".pcode":
-            continue
+    for block_file in sorted(list_tree_files(cache_dir, glob="*.pcode")):
+        block_file = (cache_dir / block_file).resolve()
 
         total_blocks += 1
 
-        stem = block_file.stem
-        first_underscore_idx = stem.find("_")
-        block_name = stem[first_underscore_idx + 1 :] if first_underscore_idx != -1 else stem
+        block_name = re.sub(r"^\d+_", "", block_file.stem)
 
         if block_name.startswith("__toplevel"):
             toplevel_blocks += 1
@@ -188,11 +188,19 @@ def collect_normalization_stats_from_cache(blocks_dir: Path) -> NormalizationRes
         else:
             named_blocks += 1
 
+        block_sourcemap = json.loads(block_file.with_suffix(".pcode.map").read_text(encoding="utf-8"))
+        sourced_pcode_lines: list[PcodeLine] = []
+
+        for i, pcode_line in enumerate(parse_pcode_file(block_file).lines):
+            sourced_pcode_lines.append(pcode_line.replace(source_lines=block_sourcemap[i]))
+
+        pcode_blocks.append(PcodeBlock(name=block_name, lines=sourced_pcode_lines))
+
     if total_blocks == 0:
-        raise FileNotFoundError(f"Normalization cache directory is empty: {blocks_dir}.")
+        raise FileNotFoundError(f"Normalization cache directory is empty: {cache_dir}.")
 
     return NormalizationResult(
-        blocks=[],  # to do: fix this later
+        blocks=pcode_blocks,
         total_blocks=total_blocks,
         named_blocks=named_blocks,
         anonymous_blocks=anonymous_blocks,

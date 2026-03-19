@@ -97,6 +97,7 @@ def diff_file_trees(
     dir1: Path,
     dir2: Path,
     include_paths: set[Path] | None = None,
+    glob: str | None = None
 ) -> tuple[list[FileDiff], list[Path], list[Path], list[Path]]:
     """
     Perform a diff between two directories and their subtrees.
@@ -106,8 +107,8 @@ def diff_file_trees(
         3. file paths only present in directory 2
         4. equal files (same path, same content)
     """
-    dir1_files = list_tree_files(dir1)
-    dir2_files = list_tree_files(dir2)
+    dir1_files = list_tree_files(dir1, glob)
+    dir2_files = list_tree_files(dir2, glob)
 
     if include_paths:
 

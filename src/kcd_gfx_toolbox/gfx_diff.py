@@ -215,13 +215,13 @@ def diff_normalized_script_trees(
             continue
 
         script_normalized_dir = normalization_dir_a / script_path_in_a
-        script_blocks_on_side_a = len(list_tree_files(script_normalized_dir))
+        script_blocks_on_side_a = len(list_tree_files(script_normalized_dir, glob="*.pcode"))
         best_match: tuple[float, Path, tuple[list[FileDiff], list[Path], list[Path]]] | None = None
 
         for candidate in candidates:
             candidate_normalized_dir = normalization_dir_b / candidate
             paired_blocks, only_in_a, only_in_b, equal_blocks = diff_file_trees(
-                script_normalized_dir, candidate_normalized_dir
+                script_normalized_dir, candidate_normalized_dir, glob="*.pcode"
             )
             similarity = (len(paired_blocks) + len(equal_blocks)) / script_blocks_on_side_a
 

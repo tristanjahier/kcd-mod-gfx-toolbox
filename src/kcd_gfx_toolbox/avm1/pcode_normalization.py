@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from dataclasses import dataclass
 import re
@@ -539,6 +540,10 @@ def normalize_file(input_file: Path, output_dir: Path) -> NormalizationResult:
         assert block.name is not None
         block_file = output_dir / f"{idx:03d}_{block.name}.pcode"
         block_file.write_text(block.render() + "\n", encoding="utf-8")
+
+        block_sourcemap = [ln.source_lines for ln in block.lines]
+        block_sourcemap_file = output_dir / f"{idx:03d}_{block.name}.pcode.map"
+        block_sourcemap_file.write_text(json.dumps(block_sourcemap) + "\n", encoding="utf-8")
 
         if block.name.startswith("__toplevel"):
             gap_count += 1
