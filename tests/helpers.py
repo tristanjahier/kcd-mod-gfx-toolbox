@@ -31,8 +31,9 @@ def read_data_file(rel_path: str) -> str:
     return (get_test_data_dir() / rel_path).read_text(encoding="utf-8")
 
 
-def list_data_files(rel_path: str) -> list[Path]:
-    files = [p for p in Path(get_test_data_dir() / rel_path).iterdir() if p.is_file()]
+def list_data_files(rel_path: str, glob: str | None = None) -> list[Path]:
+    base_path = (get_test_data_dir() / rel_path).resolve()
+    files = [p for p in base_path.glob(glob or "*") if p.is_file()]
     files.sort(key=lambda p: p.name)
     return files
 

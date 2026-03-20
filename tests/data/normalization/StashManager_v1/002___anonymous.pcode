@@ -3,8 +3,7 @@ Push register2
 Push "BoundVariantA"
 DefineFunction "", 1, "v" {
 Push register1
-Push 1
-Add2
+Increment
 Return
 }
 SetMember
@@ -15,8 +14,7 @@ Push register1
 Push "BoundVariantB"
 DefineFunction "", 1, "v" {
 Push register1
-Push 1
-Add2
+Increment
 Return
 }
 SetMember
@@ -27,8 +25,7 @@ GetMember
 Push "BoundVariantC"
 DefineFunction "", 1, "v" {
 Push register1
-Push 1
-Add2
+Increment
 Return
 }
 SetMember

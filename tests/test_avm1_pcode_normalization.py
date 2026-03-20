@@ -1,5 +1,6 @@
 from kcd_gfx_toolbox.avm1.pcode_normalization import (
     canonicalize_function_definition_headers,
+    canonicalize_increment_decrement_patterns,
     canonicalize_labels,
     canonicalize_numeric_literals,
     canonicalize_push_lines,
@@ -718,9 +719,561 @@ def test_canonicalize_labels_idempotency():
     """)
 
 
+def test_canonicalize_increment_decrement_patterns_pushregister_increment_storeregister():
+    pcode_sample = sample_pcode("""
+        Push register9
+        Push "RemoveSlot"
+        CallMethod
+        Pop
+        L10:Push register4
+        Push 1
+        Add2
+        StoreRegister 4
+        Pop
+        Jump L8
+        L7:Push register2
+        Return
+    """)
+
+    canonicalized = canonicalize_increment_decrement_patterns(pcode_sample.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        Push register9
+        Push "RemoveSlot"
+        CallMethod
+        Pop
+        L10:Push register4
+        Increment
+        StoreRegister 4
+        Pop
+        Jump L8
+        L7:Push register2
+        Return
+    """)
+
+
+def test_canonicalize_increment_decrement_patterns_pushregister_decrement_storeregister():
+    pcode_sample = sample_pcode("""
+        Push register9
+        Push "RemoveSlot"
+        CallMethod
+        Pop
+        L10:Push register4
+        Push 1
+        Subtract
+        StoreRegister 4
+        Pop
+        Jump L8
+        L7:Push register2
+        Return
+    """)
+
+    canonicalized = canonicalize_increment_decrement_patterns(pcode_sample.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        Push register9
+        Push "RemoveSlot"
+        CallMethod
+        Pop
+        L10:Push register4
+        Decrement
+        StoreRegister 4
+        Pop
+        Jump L8
+        L7:Push register2
+        Return
+    """)
+
+
+def test_canonicalize_increment_decrement_patterns_pushregister_increment_return():
+    pcode_sample = sample_pcode("""
+        Push "TotoBinio"
+        DefineFunction2 "", 1, 2, false, false, true, false, true, false, true, false, false, 1, "v" {
+        Push register1
+        Push 1
+        Add2
+        Return
+        }
+    """)
+
+    canonicalized = canonicalize_increment_decrement_patterns(pcode_sample.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        Push "TotoBinio"
+        DefineFunction2 "", 1, 2, false, false, true, false, true, false, true, false, false, 1, "v" {
+        Push register1
+        Increment
+        Return
+        }
+    """)
+
+
+def test_canonicalize_increment_decrement_patterns_pushregister_decrement_return():
+    pcode_sample = sample_pcode("""
+        Push "TotoBinio"
+        DefineFunction2 "", 1, 2, false, false, true, false, true, false, true, false, false, 1, "v" {
+        Push register1
+        Push 1
+        Subtract
+        Return
+        }
+    """)
+
+    canonicalized = canonicalize_increment_decrement_patterns(pcode_sample.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        Push "TotoBinio"
+        DefineFunction2 "", 1, 2, false, false, true, false, true, false, true, false, false, 1, "v" {
+        Push register1
+        Decrement
+        Return
+        }
+    """)
+
+
+def test_canonicalize_increment_decrement_patterns_getmember_increment_setmember():
+    pcode_sample = sample_pcode("""
+        Push register1
+        Push "pauseCounter"
+        GetMember
+        Push 1
+        Add
+        SetMember
+        Push "fastTravelIcon"
+        GetVariable
+        Push "visible"
+        GetMember
+        Not
+    """)
+
+    canonicalized = canonicalize_increment_decrement_patterns(pcode_sample.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        Push register1
+        Push "pauseCounter"
+        GetMember
+        Increment
+        SetMember
+        Push "fastTravelIcon"
+        GetVariable
+        Push "visible"
+        GetMember
+        Not
+    """)
+
+
+def test_canonicalize_increment_decrement_patterns_getmember_decrement_setmember():
+    pcode_sample = sample_pcode("""
+        Push register1
+        Push "pauseCounter"
+        GetMember
+        Push 1
+        Subtract
+        SetMember
+        Push "fastTravelIcon"
+        GetVariable
+        Push "visible"
+        GetMember
+        Not
+    """)
+
+    canonicalized = canonicalize_increment_decrement_patterns(pcode_sample.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        Push register1
+        Push "pauseCounter"
+        GetMember
+        Decrement
+        SetMember
+        Push "fastTravelIcon"
+        GetVariable
+        Push "visible"
+        GetMember
+        Not
+    """)
+
+
+def test_canonicalize_increment_decrement_patterns_getmember_increment_return():
+    pcode_sample = sample_pcode("""
+        GetMember
+        Push "_tweenList"
+        GetMember
+        Push "length"
+        GetMember
+        Push 1
+        Add2
+        Return
+        }
+        SetMember
+    """)
+
+    canonicalized = canonicalize_increment_decrement_patterns(pcode_sample.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        GetMember
+        Push "_tweenList"
+        GetMember
+        Push "length"
+        GetMember
+        Increment
+        Return
+        }
+        SetMember
+    """)
+
+
+def test_canonicalize_increment_decrement_patterns_getmember_decrement_return():
+    pcode_sample = sample_pcode("""
+        GetMember
+        Push "_tweenList"
+        GetMember
+        Push "length"
+        GetMember
+        Push 1
+        Subtract
+        Return
+        }
+        SetMember
+    """)
+
+    canonicalized = canonicalize_increment_decrement_patterns(pcode_sample.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        GetMember
+        Push "_tweenList"
+        GetMember
+        Push "length"
+        GetMember
+        Decrement
+        Return
+        }
+        SetMember
+    """)
+
+
+def test_canonicalize_increment_decrement_patterns_getvariable_increment_setvariable():
+    pcode_sample = sample_pcode("""
+        Push "pauseCounter"
+        GetVariable
+        Push 1
+        Add2
+        SetVariable
+        Push "fastTravelIcon"
+        GetVariable
+        Push "visible"
+        GetMember
+        Not
+    """)
+
+    canonicalized = canonicalize_increment_decrement_patterns(pcode_sample.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        Push "pauseCounter"
+        GetVariable
+        Increment
+        SetVariable
+        Push "fastTravelIcon"
+        GetVariable
+        Push "visible"
+        GetMember
+        Not
+    """)
+
+
+def test_canonicalize_increment_decrement_patterns_getvariable_decrement_setvariable():
+    pcode_sample = sample_pcode("""
+        Push "pauseCounter"
+        GetVariable
+        Push 1
+        Subtract
+        SetVariable
+        Push "fastTravelIcon"
+        GetVariable
+        Push "visible"
+        GetMember
+        Not
+    """)
+
+    canonicalized = canonicalize_increment_decrement_patterns(pcode_sample.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        Push "pauseCounter"
+        GetVariable
+        Decrement
+        SetVariable
+        Push "fastTravelIcon"
+        GetVariable
+        Push "visible"
+        GetMember
+        Not
+    """)
+
+
+def test_canonicalize_increment_decrement_patterns_getvariable_increment_return():
+    pcode_sample = sample_pcode("""
+        Push "count"
+        GetVariable
+        Push 1
+        Add2
+        Return
+        }
+        SetMember
+    """)
+
+    canonicalized = canonicalize_increment_decrement_patterns(pcode_sample.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        Push "count"
+        GetVariable
+        Increment
+        Return
+        }
+        SetMember
+    """)
+
+
+def test_canonicalize_increment_decrement_patterns_getvariable_decrement_return():
+    pcode_sample = sample_pcode("""
+        Push "count"
+        GetVariable
+        Push 1
+        Subtract
+        Return
+        }
+        SetMember
+    """)
+
+    canonicalized = canonicalize_increment_decrement_patterns(pcode_sample.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        Push "count"
+        GetVariable
+        Decrement
+        Return
+        }
+        SetMember
+    """)
+
+
+def test_canonicalize_increment_decrement_patterns_with_label_in_the_way_unchanged():
+    pcode_sample1 = sample_pcode("""
+        Push register9
+        Push "RemoveSlot"
+        CallMethod
+        Pop
+        L10:Push register4
+        locblablu:Push 1
+        Add2
+        StoreRegister 4
+        Pop
+        Jump L8
+        L7:Push register2
+        Return
+    """)
+
+    canonicalized = canonicalize_increment_decrement_patterns(pcode_sample1.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        Push register9
+        Push "RemoveSlot"
+        CallMethod
+        Pop
+        L10:Push register4
+        locblablu:Push 1
+        Add2
+        StoreRegister 4
+        Pop
+        Jump L8
+        L7:Push register2
+        Return
+    """)
+
+    pcode_sample2 = sample_pcode("""
+        Push register9
+        Push "RemoveSlot"
+        CallMethod
+        Pop
+        L10:Push register4
+        Push 1
+        loc789q:Add2
+        StoreRegister 4
+        Pop
+        Jump L8
+        L7:Push register2
+        Return
+    """)
+
+    canonicalized = canonicalize_increment_decrement_patterns(pcode_sample2.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        Push register9
+        Push "RemoveSlot"
+        CallMethod
+        Pop
+        L10:Push register4
+        Push 1
+        loc789q:Add2
+        StoreRegister 4
+        Pop
+        Jump L8
+        L7:Push register2
+        Return
+    """)
+
+    pcode_sample3 = sample_pcode("""
+        Push "pauseCounter"
+        GetVariable
+        loc456t:Push 1
+        Add2
+        SetVariable
+        Push "fastTravelIcon"
+        GetVariable
+        Push "visible"
+        GetMember
+        Not
+    """)
+
+    canonicalized = canonicalize_increment_decrement_patterns(pcode_sample3.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        Push "pauseCounter"
+        GetVariable
+        loc456t:Push 1
+        Add2
+        SetVariable
+        Push "fastTravelIcon"
+        GetVariable
+        Push "visible"
+        GetMember
+        Not
+    """)
+
+    pcode_sample4 = sample_pcode("""
+        GetMember
+        Push "_tweenList"
+        GetMember
+        Push "length"
+        GetMember
+        Push 1
+        labelito:Subtract
+        Return
+        }
+        SetMember
+    """)
+
+    canonicalized = canonicalize_increment_decrement_patterns(pcode_sample4.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        GetMember
+        Push "_tweenList"
+        GetMember
+        Push "length"
+        GetMember
+        Push 1
+        labelito:Subtract
+        Return
+        }
+        SetMember
+    """)
+
+
+def test_canonicalize_increment_decrement_patterns_member_variable_mix_unchanged():
+    pcode_sample1 = sample_pcode("""
+        Push "pauseCounter"
+        GetVariable
+        Push 1
+        Subtract
+        SetMember
+        Push "fastTravelIcon"
+        GetVariable
+        Push "visible"
+        GetMember
+        Not
+    """)
+
+    canonicalized = canonicalize_increment_decrement_patterns(pcode_sample1.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        Push "pauseCounter"
+        GetVariable
+        Push 1
+        Subtract
+        SetMember
+        Push "fastTravelIcon"
+        GetVariable
+        Push "visible"
+        GetMember
+        Not
+    """)
+
+    pcode_sample2 = sample_pcode("""
+        Push register1
+        Push "pauseCounter"
+        GetMember
+        Push 1
+        Add2
+        SetVariable
+        Push "fastTravelIcon"
+        GetVariable
+        Push "visible"
+        GetMember
+        Not
+    """)
+
+    canonicalized = canonicalize_increment_decrement_patterns(pcode_sample2.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        Push register1
+        Push "pauseCounter"
+        GetMember
+        Push 1
+        Add2
+        SetVariable
+        Push "fastTravelIcon"
+        GetVariable
+        Push "visible"
+        GetMember
+        Not
+    """)
+
+
+def test_canonicalize_increment_decrement_patterns_registers_dont_match_unchanged():
+    pcode_sample = sample_pcode("""
+        Push register9
+        Push "RemoveSlot"
+        CallMethod
+        Pop
+        L10:Push register4
+        Push 1
+        Add2
+        StoreRegister 40
+        Pop
+        Jump L8
+        L7:Push register2
+        Return
+    """)
+
+    canonicalized = canonicalize_increment_decrement_patterns(pcode_sample.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        Push register9
+        Push "RemoveSlot"
+        CallMethod
+        Pop
+        L10:Push register4
+        Push 1
+        Add2
+        StoreRegister 40
+        Pop
+        Jump L8
+        L7:Push register2
+        Return
+    """)
+
+
 def test_normalize_block():
-    raw_block_files = {p.name: p for p in list_data_files("pcode/blocks/StashManager_v1")}
-    normalized_block_files = {p.name: p for p in list_data_files("normalization/StashManager_v1")}
+    raw_block_files = {p.name: p for p in list_data_files("pcode/blocks/StashManager_v1", glob="*.pcode")}
+    normalized_block_files = {p.name: p for p in list_data_files("normalization/StashManager_v1", glob="*.pcode")}
 
     assert Counter(raw_block_files.keys()) == Counter(normalized_block_files.keys()), (
         "Block names and count do not match exactly between raw and normalized fixtures."

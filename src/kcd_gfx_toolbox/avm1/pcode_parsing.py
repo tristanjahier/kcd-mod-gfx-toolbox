@@ -217,3 +217,10 @@ def parse_pcode_file(input_file: Path) -> PcodeBlock:
 
 def is_pcode_instruction(pcode_line: PcodeLine | None) -> TypeGuard[PcodeInstruction]:
     return isinstance(pcode_line, PcodeInstruction)
+
+
+def merge_pcode_lines_sources(*lines: PcodeLine) -> list[int]:
+    """
+    Merge source lines from multiple PcodeLine objects, without duplicates, and sorted.
+    """
+    return sorted({ln for line in lines for ln in line.source_lines})

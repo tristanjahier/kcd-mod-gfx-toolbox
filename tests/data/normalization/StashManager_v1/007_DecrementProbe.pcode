@@ -12,8 +12,7 @@ Decrement
 StoreRegister 1
 Pop
 Push register2
-Push 1
-Subtract
+Decrement
 StoreRegister 2
 Pop
 Push register1

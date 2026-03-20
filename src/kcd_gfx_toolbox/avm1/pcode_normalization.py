@@ -11,6 +11,7 @@ from .pcode_parsing import (
     PcodeOperand,
     PcodeStructural,
     is_pcode_instruction,
+    merge_pcode_lines_sources,
     parse_pcode_file,
 )
 from kcd_gfx_toolbox.utils import safe_filename
@@ -500,6 +501,135 @@ def canonicalize_labels(lines: list[PcodeLine]) -> list[PcodeLine]:
     return canonicalized_lines
 
 
+def canonicalize_increment_decrement_patterns(lines: list[PcodeLine]) -> list[PcodeLine]:
+    """
+    Canonicalize 3 different increment or decrement patterns.
+    - `Push registerN / Push 1 / Add2|Subtract / StoreRegister N`
+    - `Push "name" / GetMember / Push 1 / Add2|Subtract / SetMember`
+    - `Push "name" / GetVariable / Push 1 / Add2|Subtract / SetVariable`
+    - In each of the above patterns, `Return` can substitute the last instruction.
+    """
+
+    def _line_is_push_register(line: PcodeLine) -> bool:
+        return bool(
+            is_pcode_instruction(line)
+            and line.opcode == "Push"
+            and len(line.operands) == 1
+            and line.operands[0].type == "symbol"
+            and REGISTER_REFERENCE_RE.fullmatch(str(line.operands[0].value))
+        )
+
+    def _line_is_push_1(line: PcodeLine) -> bool:
+        return bool(
+            is_pcode_instruction(line)
+            and line.opcode == "Push"
+            and len(line.operands) == 1
+            and line.operands[0].type == "numeric"
+            and line.operands[0].value == "1"
+        )
+
+    def _line_is_add(line: PcodeLine) -> bool:
+        return bool(is_pcode_instruction(line) and line.opcode in ["Add", "Add2"])
+
+    def _line_is_subtract(line: PcodeLine) -> bool:
+        return bool(is_pcode_instruction(line) and line.opcode == "Subtract")
+
+    def _line_is_store_register(line: PcodeLine) -> bool:
+        return bool(
+            is_pcode_instruction(line)
+            and line.opcode == "StoreRegister"
+            and len(line.operands) == 1
+            and line.operands[0].type == "numeric"
+        )
+
+    def _line_is_get_member(line: PcodeLine) -> bool:
+        return bool(is_pcode_instruction(line) and line.opcode == "GetMember" and not line.operands)
+
+    def _line_is_set_member(line: PcodeLine) -> bool:
+        return bool(is_pcode_instruction(line) and line.opcode == "SetMember" and not line.operands)
+
+    def _line_is_push_string(line: PcodeLine) -> bool:
+        return bool(
+            is_pcode_instruction(line)
+            and line.opcode == "Push"
+            and len(line.operands) == 1
+            and line.operands[0].type == "string"
+        )
+
+    def _line_is_get_variable(line: PcodeLine) -> bool:
+        return bool(is_pcode_instruction(line) and line.opcode == "GetVariable" and not line.operands)
+
+    def _line_is_set_variable(line: PcodeLine) -> bool:
+        return bool(is_pcode_instruction(line) and line.opcode == "SetVariable" and not line.operands)
+
+    def _line_is_return(line: PcodeLine) -> bool:
+        return bool(is_pcode_instruction(line) and line.opcode == "Return" and not line.operands)
+
+    canonicalized_lines: list[PcodeLine] = []
+
+    i = 0
+
+    while i < len(lines):
+        if (i + 4) > len(lines):
+            canonicalized_lines.append(lines[i])
+            i += 1
+            continue
+
+        hunk = lines[i : i + 4]  # current plus next 3 lines
+
+        # Pattern 1: Push registerN / Push 1 / Add2|Subtract / StoreRegister N
+        if (
+            _line_is_push_register(hunk[0])
+            and _line_is_push_1(hunk[1])
+            and (_line_is_add(hunk[2]) or _line_is_subtract(hunk[2]))
+            and (_line_is_store_register(hunk[3]) or _line_is_return(hunk[3]))
+            and hunk[1].label is None
+            and hunk[2].label is None
+        ):
+            register_1 = REGISTER_REFERENCE_RE.match(hunk[0].operands[0].value).group("regindex")
+            register_2 = hunk[3].operands[0].value if _line_is_store_register(hunk[3]) else None
+
+            if _line_is_return(hunk[3]) or register_1 == register_2:
+                opcode = "Increment" if hunk[2].opcode in ["Add", "Add2"] else "Decrement"
+                crement_pcode = PcodeInstruction(
+                    source_lines=merge_pcode_lines_sources(hunk[1], hunk[2]), opcode=opcode, operands=[]
+                )
+                canonicalized_lines.extend([hunk[0], crement_pcode, hunk[3]])
+                i += 4
+                continue
+
+        # Pattern 2: Push "name" / GetMember / Push 1 / Add2|Subtract / SetMember
+        # Pattern 3: Push "name" / GetVariable / Push 1 / Add2|Subtract / SetVariable
+        elif (
+            # Read previous line from canonicalized lines because it has already been processed.
+            len(canonicalized_lines) > 0
+            and _line_is_push_string(canonicalized_lines[-1])
+            and (
+                # Pair of (GetMember, SetMember|Return) OR pair of (GetVariable, SetVariable|Return).
+                _line_is_get_member(hunk[0])
+                and (_line_is_set_member(hunk[3]) or _line_is_return(hunk[3]))
+                or _line_is_get_variable(hunk[0])
+                and (_line_is_set_variable(hunk[3]) or _line_is_return(hunk[3]))
+            )
+            and _line_is_push_1(hunk[1])
+            and (_line_is_add(hunk[2]) or _line_is_subtract(hunk[2]))
+            and hunk[1].label is None
+            and hunk[2].label is None
+        ):
+            opcode = "Increment" if hunk[2].opcode in ["Add", "Add2"] else "Decrement"
+            crement_pcode = PcodeInstruction(
+                source_lines=merge_pcode_lines_sources(hunk[1], hunk[2]), opcode=opcode, operands=[]
+            )
+            canonicalized_lines.extend([hunk[0], crement_pcode, hunk[3]])
+            i += 4
+            continue
+
+        canonicalized_lines.append(lines[i])
+        i += 1
+
+    return canonicalized_lines
+
+
 def normalize_block(block: PcodeBlock) -> PcodeBlock:
     """
     Normalize a p-code block with multiple obscure techniques.
@@ -512,6 +642,7 @@ def normalize_block(block: PcodeBlock) -> PcodeBlock:
     lines = strip_unreferenced_label_definitions(lines)
     lines = canonicalize_labels(lines)
     lines = normalize_not_not_if_patterns(lines)
+    lines = canonicalize_increment_decrement_patterns(lines)
 
     return PcodeBlock(lines=lines, name=block.name)
 

@@ -86,8 +86,7 @@ Push "m_SlotsSize"
 Push register5
 Push "m_SlotsSize"
 GetMember
-Push 1
-Subtract
+Decrement
 SetMember
 Push 0
 Push register4

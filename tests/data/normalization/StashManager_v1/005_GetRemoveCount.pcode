@@ -194,8 +194,7 @@ Push "RemoveSlot"
 CallMethod
 Pop
 L8:Push register3
-Push 1
-Add2
+Increment
 StoreRegister 3
 Pop
 Jump L6
