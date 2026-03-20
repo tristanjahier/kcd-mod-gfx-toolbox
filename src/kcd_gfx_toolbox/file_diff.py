@@ -94,10 +94,7 @@ def diff_texts(text1_lines: list[str], text2_lines: list[str]) -> TextDiff:
 
 
 def diff_file_trees(
-    dir1: Path,
-    dir2: Path,
-    include_paths: set[Path] | None = None,
-    glob: str | None = None
+    dir1: Path, dir2: Path, include_paths: set[Path] | None = None, glob: str | None = None
 ) -> tuple[list[FileDiff], list[Path], list[Path], list[Path]]:
     """
     Perform a diff between two directories and their subtrees.
