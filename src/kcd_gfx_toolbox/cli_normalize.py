@@ -10,6 +10,13 @@ from .utils import AnsiColor, print_error
 def command(
     input_file: Annotated[Path, typer.Argument(help="The p-code file to normalize.")],
     output_dir: Annotated[Path, typer.Argument(help="The directory where to write normalized files.")],
+    write_source_maps: Annotated[
+        bool,
+        typer.Option(
+            "--source-maps/--no-source-maps",
+            help="Write .pcode.map source-map files alongside normalized p-code.",
+        ),
+    ] = True,
 ):
     """
     Split a p-code file into logical blocks and normalize each of them.
@@ -22,7 +29,7 @@ def command(
 
     output_dir = output_dir.resolve()
 
-    stats = normalize_file(input_file, output_dir)
+    stats = normalize_file(input_file, output_dir, write_source_maps=write_source_maps)
 
     print(
         f"{input_file.name}: split into {stats.total_blocks} blocks",
