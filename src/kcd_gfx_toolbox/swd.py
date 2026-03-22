@@ -127,6 +127,7 @@ def build_pcode_to_actionscript_line_map(
 ) -> dict[str, dict[int, int | None]]:
     """
     Build a map from p-code lines to ActionScript lines for all scripts.
+    Line numbers in the resulting map are 0-based (whereas they are 1-based in SWD).
     """
     # Map module IDs to script names (normalized as posix paths).
     module_id_to_script: dict[int, str] = {}
@@ -152,7 +153,9 @@ def build_pcode_to_actionscript_line_map(
             continue
 
         script_name = module_id_to_script[o.module]
-        line_map.setdefault(script_name, {})[o.line] = offset_to_as_line.get(o.module, {}).get(o.offset)
+        mapped_line = offset_to_as_line.get(o.module, {}).get(o.offset)
+        # Make line numbers 0-based instead of 1-based.
+        line_map.setdefault(script_name, {})[o.line - 1] = (mapped_line - 1) if mapped_line is not None else None
 
     return line_map
 

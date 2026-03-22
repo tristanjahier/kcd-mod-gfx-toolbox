@@ -119,7 +119,7 @@ def command(
 
     for pcode_line in block.lines:
         for src_line in pcode_line.source_lines:
-            as_line = script_pcode_to_as.get(src_line + 1)
+            as_line = script_pcode_to_as.get(src_line)
             is_direct = as_line is not None
 
             if is_direct:
@@ -128,7 +128,7 @@ def command(
                 as_line = last_known_as_line
 
             as_text = (
-                actionscript_lines[as_line - 1] if as_line is not None and as_line <= len(actionscript_lines) else ""
+                actionscript_lines[as_line] if as_line is not None and as_line <= len(actionscript_lines) else ""
             ).strip()
 
             if not is_direct:

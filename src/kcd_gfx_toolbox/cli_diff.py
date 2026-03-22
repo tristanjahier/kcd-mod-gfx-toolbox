@@ -432,15 +432,15 @@ def display_detailed_diff_in_actionscript(
 
         concerned_lines_in_as_source_a = []
         for ln in concerned_lines_in_raw_block_a:
-            as_src_line = block_a_pcode_to_as.get(ln + 1)
+            as_src_line = block_a_pcode_to_as.get(ln)
             if as_src_line is not None and as_src_line <= len(script_a_actionscript_lines):
-                concerned_lines_in_as_source_a.append(as_src_line - 1)
+                concerned_lines_in_as_source_a.append(as_src_line)
 
         concerned_lines_in_as_source_b = []
         for ln in concerned_lines_in_raw_block_b:
-            as_src_line = block_b_pcode_to_as.get(ln + 1)
+            as_src_line = block_b_pcode_to_as.get(ln)
             if as_src_line is not None and as_src_line <= len(script_b_actionscript_lines):
-                concerned_lines_in_as_source_b.append(as_src_line - 1)
+                concerned_lines_in_as_source_b.append(as_src_line)
 
         concerned_lines_in_as_source_a = set(concerned_lines_in_as_source_a)
         concerned_lines_in_as_source_b = set(concerned_lines_in_as_source_b)
