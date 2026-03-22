@@ -87,7 +87,8 @@ def safe_filename(name: str) -> str | None:
     Ensure that the string contains only valid characters for file names.
     None if impossible.
     """
-    return re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip() or None
+    name = re.sub(r"[^A-Za-z0-9._-]+", "_", name)
+    return None if set(name) == {"_"} else name
 
 
 def get_temp_dir() -> Path:
