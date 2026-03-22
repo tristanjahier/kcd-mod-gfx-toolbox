@@ -52,11 +52,9 @@ def find_function_name_and_start_line(
         if line.opcode == "Push" and len(line.operands) == 1 and line.operands[0].type == "string" and i - 1 >= 0:
             prev = lines[i - 1]
 
-            if not isinstance(prev, PcodeInstruction):
-                continue
-
             if (
-                prev.opcode == "Push"
+                is_pcode_instruction(prev)
+                and prev.opcode == "Push"
                 and len(prev.operands) == 1
                 and prev.operands[0].type == "symbol"
                 and REGISTER_REFERENCE_RE.fullmatch(str(prev.operands[0].value))
@@ -117,7 +115,7 @@ def split_into_blocks(pcode_file: PcodeBlock) -> list[PcodeBlock]:
         current = pcode_file.lines[i]
 
         # If we find a function definition instruction.
-        if isinstance(current, PcodeInstruction) and current.opcode in ["DefineFunction", "DefineFunction2"]:
+        if is_pcode_instruction(current) and current.opcode in ["DefineFunction", "DefineFunction2"]:
             assert current.operands[0] is not None
             assert current.operands[0].type == "string"
             declared_name = current.operands[0].value
@@ -146,7 +144,7 @@ def split_into_blocks(pcode_file: PcodeBlock) -> list[PcodeBlock]:
             # Include trailing SetMember if present on the next line.
             if (
                 (end + 1) < len(pcode_file.lines)
-                and isinstance(pcode_file.lines[end + 1], PcodeInstruction)
+                and is_pcode_instruction(pcode_file.lines[end + 1])
                 and pcode_file.lines[end + 1].opcode == "SetMember"
             ):
                 end += 1
@@ -312,10 +310,7 @@ def canonicalize_register_references_in_function_block(lines: list[PcodeLine]) -
                 self.next_reg_index += 1
             return self.registers_seen[reg_idx]
 
-    def _canonicalize_line(line: PcodeLine, scope: RegisterScope) -> PcodeLine:
-        if not is_pcode_instruction(line):
-            return line
-
+    def _canonicalize_line(line: PcodeInstruction, scope: RegisterScope) -> PcodeLine:
         if line.opcode == "StoreRegister":
             canon_index = scope.canonicalize_register_index(str(line.operands[0].value))
             return line.replace(operands=[PcodeOperand(type="numeric", value=str(canon_index))] + line.operands[1:])

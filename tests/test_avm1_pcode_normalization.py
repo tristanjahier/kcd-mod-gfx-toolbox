@@ -1,3 +1,4 @@
+from pathlib import Path
 from kcd_gfx_toolbox.avm1.pcode_normalization import (
     canonicalize_function_definition_headers,
     canonicalize_increment_decrement_patterns,
@@ -9,6 +10,7 @@ from kcd_gfx_toolbox.avm1.pcode_normalization import (
     find_function_name_and_start_line,
     list_label_references,
     normalize_block,
+    normalize_file,
     normalize_not_not_if_patterns,
     split_into_blocks,
     strip_unreferenced_label_definitions,
@@ -19,7 +21,7 @@ import re
 from collections import Counter
 
 
-def test_find_function_name_and_start_line():
+def test_find_function_name_and_start_line_single_line():
     pcode_sample = sample_pcode("""
         Push register1, "m_DisplayedData", 0.0, "Array"
         NewObject
@@ -42,6 +44,73 @@ def test_find_function_name_and_start_line():
 
     assert func_start == 5
     assert func_name == "GetMoneyForString"
+
+
+def test_find_function_name_and_start_line_two_lines():
+    pcode_sample = sample_pcode("""
+        Push register1, "m_DisplayedData", 0.0, "Array"
+        NewObject
+        SetMember
+        }
+        SetMember
+        Push register2
+        Push "GetMoneyForString"
+        DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {
+        Push 0.1, 0.0, register1, "GetMoney"
+        CallMethod
+        Push 1, "Math"
+        GetVariable
+    """)
+
+    func_info = find_function_name_and_start_line(pcode_sample.lines, 7)
+
+    assert func_info is not None
+
+    func_start, func_name = func_info
+
+    assert func_start == 5
+    assert func_name == "GetMoneyForString"
+
+
+def test_find_function_name_and_start_line_malformed_1():
+    pcode_sample = sample_pcode("""
+        Push register1, "m_DisplayedData", 0.0, "Array"
+        NewObject
+        SetMember
+        }
+        SetMember
+        Push register2
+        Pop
+        Push "GetMoneyForString"
+        DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {
+        Push 0.1, 0.0, register1, "GetMoney"
+        CallMethod
+        Push 1, "Math"
+        GetVariable
+    """)
+
+    func_info = find_function_name_and_start_line(pcode_sample.lines, 8)
+
+    assert func_info is None
+
+
+def test_find_function_name_and_start_line_malformed_2():
+    pcode_sample = sample_pcode("""
+        Push register1, "m_DisplayedData", 0.0, "Array"
+        NewObject
+        SetMember
+        }
+        Push "GetMoneyForString"
+        DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {
+        Push 0.1, 0.0, register1, "GetMoney"
+        CallMethod
+        Push 1, "Math"
+        GetVariable
+    """)
+
+    func_info = find_function_name_and_start_line(pcode_sample.lines, 5)
+
+    assert func_info is None
 
 
 def test_find_function_end_line_standard():
@@ -225,6 +294,43 @@ def test_split_into_blocks_drops_overlapping_lookback_for_unnamed_function():
     """)
 
 
+def test_split_into_blocks_uses_fallback_name_for_unsafely_named_function():
+    pcode_sample = sample_pcode("""
+        Push register8
+        Push "@!{}&"
+        DefineFunction2 "", 1, 2, false, false, true, false, true, false, true, false, false, 1, "value" {
+        Push register1
+        Return
+        }
+        SetMember
+    """)
+
+    blocks = split_into_blocks(pcode_sample)
+
+    assert [block.name for block in blocks] == ["__anonymous"]
+
+
+def test_split_into_blocks_numbers_duplicate_block_names():
+    pcode_sample = sample_pcode("""
+        Push register2
+        Push "SameName"
+        DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {
+        Push 1
+        }
+        SetMember
+        Push register2
+        Push "SameName"
+        DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {
+        Push 2
+        }
+        SetMember
+    """)
+
+    blocks = split_into_blocks(pcode_sample)
+
+    assert [block.name for block in blocks] == ["SameName", "SameName__2"]
+
+
 def test_canonicalize_push_lines():
     pcode_sample = sample_pcode("""
         Push register2
@@ -319,6 +425,7 @@ def test_canonicalize_register_references_in_function_block():
         GetMember
         Push register8
         GetMember
+        loc1312:
         Push 0.0
         StoreRegister 8
         Pop
@@ -340,6 +447,7 @@ def test_canonicalize_register_references_in_function_block():
         GetMember
         Push register1
         GetMember
+        loc1312:
         Push 0.0
         StoreRegister 1
         Pop
@@ -1290,3 +1398,41 @@ def test_normalize_block():
         assert test_normalized_block == fixture_normalized_block, (
             f"Block {block_file_name} does not match with its normalized fixture."
         )
+
+
+def test_normalize_file(tmp_path: Path):
+    result = normalize_file(get_test_data_dir() / "pcode/StashManager_v1.pcode", tmp_path)
+
+    test_blocks = {p.name: p for p in tmp_path.glob("*.pcode") if p.is_file()}
+    fixture_blocks = {p.name: p for p in list_data_files("normalization/StashManager_v1", glob="*.pcode")}
+
+    assert Counter(test_blocks.keys()) == Counter(fixture_blocks.keys()), (
+        "Block names and count do not match exactly between test output and fixtures."
+    )
+
+    for fixture_name in fixture_blocks:
+        fixture_normalized_block = read_data_file("normalization/StashManager_v1/" + fixture_name).strip()
+        test_normalized_block = (tmp_path / fixture_name).read_text(encoding="utf-8").strip()
+        assert test_normalized_block == fixture_normalized_block, (
+            f"Block {test_normalized_block} does not match with its normalized fixture."
+        )
+
+    assert len(result.blocks) == len(test_blocks)
+    assert result.total_blocks == len(test_blocks)
+
+
+def test_normalize_file_generates_source_maps(tmp_path: Path):
+    normalize_file(get_test_data_dir() / "pcode/StashManager_v2.pcode", tmp_path, write_source_maps=True)
+
+    block_files = {p.name: p for p in tmp_path.glob("*.pcode") if p.is_file()}
+    sourcemap_names = {p.stem: p for p in tmp_path.glob("*.pcode.map") if p.is_file()}
+
+    assert Counter(block_files.keys()) == Counter(sourcemap_names.keys()), (
+        "File names and count do not match exactly between normalized blocks and their sourcemaps."
+    )
+
+
+def test_normalize_file_can_omit_source_maps(tmp_path: Path):
+    normalize_file(get_test_data_dir() / "pcode/StashManager_v2.pcode", tmp_path, write_source_maps=False)
+    sourcemaps = {p for p in tmp_path.glob("*.pcode.map") if p.is_file()}
+    assert len(sourcemaps) == 0
