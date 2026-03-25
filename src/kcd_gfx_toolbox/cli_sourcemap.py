@@ -5,11 +5,12 @@ from rich.rule import Rule
 import typer
 from rich.console import Console
 from rich.table import Table
+
 from .avm1.pcode_parsing import parse_pcode_file
 from .avm1.pcode_normalization import split_into_blocks, normalize_block
-from .swd import build_pcode_to_actionscript_line_map
-from .extraction import extraction_cache_key, read_gfx_debug_swd_files
-from .utils import print_error, get_temp_dir, read_file_lines
+from .swd import build_pcode_to_actionscript_line_map, parse_swd_file
+from .utils import print_error, read_file_lines
+from .workspace import Workspace
 
 
 def command(
@@ -18,9 +19,11 @@ def command(
         str, typer.Argument(help="Internal script path, without a leading slash (e.g. 'frame_1/DoAction').")
     ],
     block_name: Annotated[str | None, typer.Argument(help="Block name to inspect.")] = None,
-    extraction_dir: Annotated[
+    workspace_dir: Annotated[
         Path | None,
-        typer.Argument(help="Directory of GFx extracted files. If omitted, the temporary directory is inferred."),
+        typer.Argument(
+            help="Workspace directory to extract and analyze the contents of the GFx file. If omitted, a temporary directory is automatically inferred based on the source file."
+        ),
     ] = None,
     normalized: Annotated[
         bool,
@@ -39,17 +42,18 @@ def command(
         print_error(f"Invalid input: {gfx_file} is not a file.")
         raise typer.Exit(code=1)
 
-    if extraction_dir is None:
-        file_path_hash = extraction_cache_key(gfx_file)
-        extraction_dir = (get_temp_dir() / f"{gfx_file.stem}_{file_path_hash}" / "raw").resolve()
+    if workspace_dir is None:
+        workspace = Workspace.create_as_temporary_directory(gfx_file)
+    else:
+        if not workspace_dir.is_dir():
+            print_error(f"Workspace directory not found: {workspace_dir}. Run 'kcd-gfx extract' first.")
+            raise typer.Exit(code=1)
 
-    if not extraction_dir.is_dir():
-        print_error(f"Extraction directory not found: {extraction_dir}. Run 'kcd-gfx extract' first.")
-        raise typer.Exit(code=1)
+        workspace = Workspace(workspace_dir)
 
-    script_file = (extraction_dir / "scripts" / Path(script_path).with_suffix(".pcode")).resolve()
+    script_file = workspace.extraction_path(f"scripts/{script_path}.pcode")
 
-    if not script_file.exists() or not script_file.is_relative_to(extraction_dir):
+    if not script_file.exists():
         print_error(f"Script {script_path!r} was not found within extracted GFx files.")
         raise typer.Exit(code=1)
 
@@ -73,7 +77,8 @@ def command(
         block = normalize_block(block)
 
     try:
-        swd_pcode, swd_actionscript = read_gfx_debug_swd_files(gfx_file, extraction_dir)
+        swd_pcode = parse_swd_file(workspace.find_debug_pcode_swd_file())
+        swd_actionscript = parse_swd_file(workspace.find_debug_actionscript_swd_file())
     except FileNotFoundError as e:
         print_error(e)
         raise typer.Exit(code=1)
@@ -86,7 +91,7 @@ def command(
 
     script_pcode_to_as = pcode_to_as_line_map[script_path]
 
-    actionscript_file = (extraction_dir / "scripts" / Path(script_path).with_suffix(".as")).resolve()
+    actionscript_file = workspace.extraction_path(f"scripts/{script_path}.as")
 
     if not actionscript_file.is_file():
         print_error(f"ActionScript file not found: {actionscript_file}")

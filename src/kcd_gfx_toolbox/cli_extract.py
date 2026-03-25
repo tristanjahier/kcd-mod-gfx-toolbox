@@ -4,8 +4,10 @@ from pathlib import Path
 import subprocess
 from typing import Annotated
 import typer
-from .extraction import extract_gfx_contents, extraction_cache_key, resolve_ffdec
-from .utils import AnsiColor, ensure_empty_dir, get_temp_dir, print_error
+
+from .extraction import extract_gfx_contents, resolve_ffdec
+from .utils import AnsiColor, ensure_empty_dir, print_error
+from .workspace import Workspace
 
 
 def command(
@@ -31,16 +33,7 @@ def command(
         raise typer.Exit(code=1)
 
     if output_dir is None:
-        temp_dir = get_temp_dir()
-
-        if temp_dir.exists() and not temp_dir.is_dir():
-            print_error(f"Temp path exists but is not a directory: {temp_dir}")
-            raise typer.Exit(code=1)
-
-        temp_dir.mkdir(parents=True, exist_ok=True)
-
-        input_file_hash = extraction_cache_key(input_file)
-        output_dir = (temp_dir / f"{input_file.stem}_{input_file_hash}" / "raw").resolve()
+        output_dir = Workspace.create_as_temporary_directory(input_file).extraction_dir()
     else:
         output_dir = output_dir.resolve()
 

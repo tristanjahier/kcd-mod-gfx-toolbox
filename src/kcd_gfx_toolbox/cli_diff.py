@@ -6,8 +6,14 @@ import json
 import re
 from typing import Annotated, Literal, cast
 import typer
+
+from .workspace import Workspace
 from .avm1.pcode_parsing import PcodeBlock, PcodeLine, parse_pcode_file
-from .swd import build_pcode_to_actionscript_line_map, propagate_mapped_lines_to_subsequent_unmapped_lines
+from .swd import (
+    build_pcode_to_actionscript_line_map,
+    parse_swd_file,
+    propagate_mapped_lines_to_subsequent_unmapped_lines,
+)
 from .gfx_diff import (
     GfxDiffSet,
     GfxDiffTreeNode,
@@ -17,7 +23,10 @@ from .gfx_diff import (
     diff_normalized_script_trees,
     refine_block_diffs,
 )
-from .extraction import extract_gfx_contents, extraction_cache_key, read_gfx_debug_swd_files, resolve_ffdec
+from .extraction import (
+    extract_gfx_contents,
+    resolve_ffdec,
+)
 from .avm1.pcode_normalization import NormalizationResult, normalize_file
 from .file_diff import (
     align_hunk_pairs,
@@ -29,7 +38,6 @@ from .utils import (
     ensure_empty_dir,
     list_tree_files,
     print_error,
-    get_temp_dir,
     print_warning,
     read_file_lines,
 )
@@ -40,6 +48,137 @@ from rich.console import Console
 from rich.table import Table
 from rich import box
 from rich.rule import Rule
+
+
+def extract_gfx_file(ffdec_path: Path, gfx_file: Path, workspace: Workspace, read_cache: bool):
+    extraction_dir = workspace.extraction_dir()
+    print(f"{gfx_file} -> \033]8;;{extraction_dir.as_uri()}\033\\{extraction_dir}\033]8;;\033\\")
+
+    if read_cache and workspace.extraction_dir_has_content():
+        if workspace.extraction_dir_has_valid_contents():
+            print("Extracted content already present in the target directory. Skipping.")
+            return
+        else:
+            print_warning(
+                "Extraction directory is not empty, but it appears partial, corrupted, or unrelated. Re-extracting."
+            )
+
+    try:
+        shutil.rmtree(extraction_dir)
+    except FileNotFoundError:
+        pass
+
+    extraction_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        extract_gfx_contents(ffdec_path, gfx_file, extraction_dir)
+    except subprocess.CalledProcessError as e:
+        print_error(f"ffdec failed with code {e.returncode}:")
+        if e.stderr:
+            print_error(e.stderr)
+        raise typer.Exit(code=1)
+
+
+def read_cached_normalized_blocks(cache_dir: Path) -> NormalizationResult:
+    """
+    Compute normalization stats from an existing normalized-blocks directory.
+    """
+    if not cache_dir.is_dir():
+        raise FileNotFoundError(f"Missing normalization cache directory: {cache_dir}.")
+
+    pcode_blocks: list[PcodeBlock] = []
+    total_blocks = named_blocks = anonymous_blocks = toplevel_blocks = 0
+
+    for block_file in sorted(list_tree_files(cache_dir, glob="*.pcode")):
+        block_file = (cache_dir / block_file).resolve()
+
+        total_blocks += 1
+
+        block_name = re.sub(r"^\d+_", "", block_file.stem)
+
+        if block_name.startswith("__toplevel"):
+            toplevel_blocks += 1
+        elif block_name.startswith("__anonymous"):
+            anonymous_blocks += 1
+        else:
+            named_blocks += 1
+
+        block_sourcemap = json.loads(block_file.with_suffix(".pcode.map").read_text(encoding="utf-8"))
+        sourced_pcode_lines: list[PcodeLine] = []
+
+        for i, pcode_line in enumerate(parse_pcode_file(block_file).lines):
+            sourced_pcode_lines.append(pcode_line.replace(source_lines=block_sourcemap[i]))
+
+        pcode_blocks.append(PcodeBlock(name=block_name, lines=sourced_pcode_lines))
+
+    if total_blocks == 0:
+        raise FileNotFoundError(f"Normalization cache directory is empty: {cache_dir}.")
+
+    return NormalizationResult(
+        blocks=pcode_blocks,
+        total_blocks=total_blocks,
+        named_blocks=named_blocks,
+        anonymous_blocks=anonymous_blocks,
+        toplevel_blocks=toplevel_blocks,
+    )
+
+
+def normalize_scripts(
+    gfx_file: Path, workspace: Workspace, scripts: set[Path], read_cache: bool
+) -> dict[Path, list[PcodeBlock]]:
+    """
+    Perform normalization on given scripts, or reuse the cached data if applicable.
+    """
+    results: list[tuple[Path, NormalizationResult]] = []
+    normalized_script_blocks: dict[Path, list[PcodeBlock]] = {}
+    read_cache = read_cache and workspace.normalization_dir_has_content()
+
+    for script_path in scripts:
+        raw_script_path = workspace.find_raw_pcode_file(script_path)
+        normalized_script_dir = workspace.normalization_path(script_path)
+        norm_stats = None
+
+        if read_cache:
+            try:
+                norm_stats = read_cached_normalized_blocks(normalized_script_dir)
+            except FileNotFoundError:
+                print_warning(f"Normalization cache missing: {normalized_script_dir}.")  # Not fatal
+
+        if norm_stats is None:
+            ensure_empty_dir(normalized_script_dir)
+
+            try:
+                norm_stats = normalize_file(raw_script_path, normalized_script_dir)
+            except Exception as e:
+                print_error(f"Normalization failed: {raw_script_path}")
+                print_error(e)
+                raise typer.Exit(code=1)
+
+        results.append((script_path, norm_stats))
+        normalized_script_blocks[script_path] = norm_stats.blocks
+
+    print(f"{gfx_file}:")
+
+    result_table = Table(box=box.SIMPLE, show_edge=False, pad_edge=False, show_header=False)
+    result_table.add_column("p-code file")
+    result_table.add_column("Blocks", justify="right")
+    result_table.add_column("Named", justify="right")
+    result_table.add_column("Anonymous", justify="right")
+    result_table.add_column("Top-level", justify="right")
+
+    for rel_path, stats in results:
+        result_table.add_row(
+            str(rel_path),
+            f"{stats.total_blocks} blocks",
+            f"{stats.named_blocks} named",
+            f"{stats.anonymous_blocks} anonymous",
+            f"{stats.toplevel_blocks} top-level",
+        )
+
+    console = Console()
+    console.print(result_table)
+
+    return normalized_script_blocks
 
 
 def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table):
@@ -143,71 +282,6 @@ def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table):
         _render_node(child, is_last_child=is_last)
 
 
-def normalize_script(script_src: Path, output_dir: Path, read_cache: bool) -> NormalizationResult:
-    """
-    Perform normalization for a given script, or read the cached data if applicable.
-    """
-    if read_cache:
-        try:
-            return read_normalized_blocks_from_cache(output_dir)
-        except FileNotFoundError:
-            print_warning(f"Normalization cache missing: {output_dir}.")
-            # Not a fatal error.
-
-    ensure_empty_dir(output_dir)
-
-    try:
-        return normalize_file(script_src, output_dir)
-    except Exception as e:
-        print_error(f"Normalization failed: {script_src}")
-        print_error(e)
-        raise typer.Exit(code=1)
-
-
-def read_normalized_blocks_from_cache(cache_dir: Path) -> NormalizationResult:
-    """
-    Compute normalization stats from an existing normalized-blocks directory.
-    """
-    if not cache_dir.is_dir():
-        raise FileNotFoundError(f"Missing normalization cache directory: {cache_dir}.")
-
-    pcode_blocks: list[PcodeBlock] = []
-    total_blocks = named_blocks = anonymous_blocks = toplevel_blocks = 0
-
-    for block_file in sorted(list_tree_files(cache_dir, glob="*.pcode")):
-        block_file = (cache_dir / block_file).resolve()
-
-        total_blocks += 1
-
-        block_name = re.sub(r"^\d+_", "", block_file.stem)
-
-        if block_name.startswith("__toplevel"):
-            toplevel_blocks += 1
-        elif block_name.startswith("__anonymous"):
-            anonymous_blocks += 1
-        else:
-            named_blocks += 1
-
-        block_sourcemap = json.loads(block_file.with_suffix(".pcode.map").read_text(encoding="utf-8"))
-        sourced_pcode_lines: list[PcodeLine] = []
-
-        for i, pcode_line in enumerate(parse_pcode_file(block_file).lines):
-            sourced_pcode_lines.append(pcode_line.replace(source_lines=block_sourcemap[i]))
-
-        pcode_blocks.append(PcodeBlock(name=block_name, lines=sourced_pcode_lines))
-
-    if total_blocks == 0:
-        raise FileNotFoundError(f"Normalization cache directory is empty: {cache_dir}.")
-
-    return NormalizationResult(
-        blocks=pcode_blocks,
-        total_blocks=total_blocks,
-        named_blocks=named_blocks,
-        anonymous_blocks=anonymous_blocks,
-        toplevel_blocks=toplevel_blocks,
-    )
-
-
 def display_detailed_diff_in_pcode(
     diffset: GfxDiffSet, sort_order: Literal["default", "changes_desc", "changes_asc"] = "default", max_lines: int = 0
 ):
@@ -269,11 +343,9 @@ def display_detailed_diff_in_pcode(
 
 
 def display_detailed_diff_in_actionscript(
-    file_a: Path,
-    extraction_dir_a: Path,
+    workspace_a: Workspace,
     normalized_script_blocks_a: dict[Path, list[PcodeBlock]],
-    file_b: Path,
-    extraction_dir_b: Path,
+    workspace_b: Workspace,
     normalized_script_blocks_b: dict[Path, list[PcodeBlock]],
     diffset: GfxDiffSet,
     sort_order: Literal["default", "changes_desc", "changes_asc"] = "default",
@@ -314,8 +386,10 @@ def display_detailed_diff_in_actionscript(
         return actionscript_cache[file]
 
     try:
-        file_a_swd_pcode, file_a_swd_as = read_gfx_debug_swd_files(file_a, extraction_dir_a)
-        file_b_swd_pcode, file_b_swd_as = read_gfx_debug_swd_files(file_b, extraction_dir_b)
+        file_a_swd_pcode = parse_swd_file(workspace_a.find_debug_pcode_swd_file())
+        file_a_swd_as = parse_swd_file(workspace_a.find_debug_actionscript_swd_file())
+        file_b_swd_pcode = parse_swd_file(workspace_b.find_debug_pcode_swd_file())
+        file_b_swd_as = parse_swd_file(workspace_b.find_debug_actionscript_swd_file())
     except FileNotFoundError as e:
         print_error(e)
         raise typer.Exit(code=1)
@@ -348,11 +422,11 @@ def display_detailed_diff_in_actionscript(
             return
 
         script_a_actionscript_lines = _read_actionscript_source_lines(
-            (extraction_dir_a / script.side_a_path).with_suffix(".as")
+            workspace_a.find_actionscript_file(script.side_a_path)
         )
 
         script_b_actionscript_lines = _read_actionscript_source_lines(
-            (extraction_dir_b / script.side_b_path).with_suffix(".as")
+            workspace_b.find_actionscript_file(script.side_b_path)
         )
 
         script_a_name = script.side_a_path.as_posix().removeprefix("scripts/")
@@ -566,13 +640,8 @@ def command(
         print_error(f"Invalid input: {file_b} is not a file.")
         raise typer.Exit(code=1)
 
-    temp_dir = get_temp_dir()
-
-    if temp_dir.exists() and not temp_dir.is_dir():
-        print_error(f"Temp path exists but is not a directory: {temp_dir}")
-        raise typer.Exit(code=1)
-
-    temp_dir.mkdir(parents=True, exist_ok=True)
+    workspace_a = Workspace.create_as_temporary_directory(file_a)
+    workspace_b = Workspace.create_as_temporary_directory(file_b)
 
     try:
         ffdec_path = resolve_ffdec(ffdec_path)
@@ -582,9 +651,6 @@ def command(
 
     print(f"{AnsiColor.LIGHT_YELLOW}File A:{AnsiColor.RESET} {file_a}")
     print(f"{AnsiColor.LIGHT_YELLOW}File B:{AnsiColor.RESET} {file_b}")
-    print(
-        f"{AnsiColor.LIGHT_YELLOW}Temp dir:{AnsiColor.RESET} \033]8;;{temp_dir.as_uri()}\033\\{temp_dir}\033]8;;\033\\"
-    )
     print(f"{AnsiColor.LIGHT_YELLOW}Using ffdec:{AnsiColor.RESET} {ffdec_path}")
 
     # ================================================================
@@ -593,58 +659,17 @@ def command(
 
     print(f"\n{AnsiColor.BLUE}» 1: Extraction of GFX scripts as p-code{AnsiColor.RESET}\n")
 
-    # Extraction of file A.
-    file_a_path_hash = extraction_cache_key(file_a)
-    extraction_dir_a = (temp_dir / f"{file_a.stem}_{file_a_path_hash}" / "raw").resolve()
-    print(f"{file_a} -> {extraction_dir_a}")
-
-    if not use_extraction_cache or not extraction_dir_a.is_dir():
-        try:
-            shutil.rmtree(extraction_dir_a)
-        except FileNotFoundError:
-            pass
-
-        extraction_dir_a.mkdir(parents=True, exist_ok=True)
-
-        try:
-            extract_gfx_contents(ffdec_path, file_a, extraction_dir_a)
-        except subprocess.CalledProcessError as e:
-            print_error(f"ffdec failed with code {e.returncode}:")
-            if e.stderr:
-                print_error(e.stderr)
-            raise typer.Exit(code=1)
-    else:
-        print("Extraction directory already exists. Reusing.")
-
-    # Extraction of file B.
-    file_b_path_hash = extraction_cache_key(file_b)
-    extraction_dir_b = (temp_dir / f"{file_b.stem}_{file_b_path_hash}" / "raw").resolve()
-    print(f"{file_b} -> {extraction_dir_b}")
-
-    if not use_extraction_cache or not extraction_dir_b.is_dir():
-        try:
-            shutil.rmtree(extraction_dir_b)
-        except FileNotFoundError:
-            pass
-
-        extraction_dir_b.mkdir(parents=True, exist_ok=True)
-
-        try:
-            extract_gfx_contents(ffdec_path, file_b, extraction_dir_b)
-        except subprocess.CalledProcessError as e:
-            print_error(f"ffdec failed with code {e.returncode}:")
-            if e.stderr:
-                print_error(e.stderr)
-            raise typer.Exit(code=1)
-    else:
-        print("Extraction directory already exists. Reusing.")
+    extract_gfx_file(ffdec_path, file_a, workspace_a, use_extraction_cache)
+    extract_gfx_file(ffdec_path, file_b, workspace_b, use_extraction_cache)
 
     # ================================================================
     # Step 2: perform a naive diff between the two directory trees.
 
     print(f"\n{AnsiColor.BLUE}» 2: Searching for file differences{AnsiColor.RESET}\n")
 
-    common, only_in_a, only_in_b = diff_file_trees_basic(extraction_dir_a, extraction_dir_b, "scripts/**/*.pcode")
+    common, only_in_a, only_in_b = diff_file_trees_basic(
+        workspace_a.extraction_dir(), workspace_b.extraction_dir(), "scripts/**/*.pcode"
+    )
 
     common_path_scripts: set[Path] = {p.with_suffix("") for p in common}
     unmatched_a_scripts: set[Path] = {p.with_suffix("") for p in only_in_a}
@@ -676,78 +701,17 @@ def command(
     # decompilation, and to highlight the real logical differences. The normalization is done at a "block level".
     # Files are split into blocks (top level scope, functions).
 
-    normalization_dir_a = (temp_dir / f"{file_a.stem}_{file_a_path_hash}" / "normalized").resolve()
-    normalization_dir_b = (temp_dir / f"{file_b.stem}_{file_b_path_hash}" / "normalized").resolve()
-
-    # We should only try to read the cache if:
-    #   1. it is the expected behaviour for the command.
-    #   2. normalization has already been cached for that file.
-    should_read_cache_file_a = use_normalization_cache and normalization_dir_a.is_dir()
-    should_read_cache_file_b = use_normalization_cache and normalization_dir_b.is_dir()
-
-    normalization_dir_a.mkdir(parents=True, exist_ok=True)
-    normalization_dir_b.mkdir(parents=True, exist_ok=True)
-
     print(f"\n{AnsiColor.BLUE}» 3: Normalizing differing scripts into p-code blocks{AnsiColor.RESET}\n")
 
-    normalization_results_a: list[tuple[Path, NormalizationResult]] = []
-    normalization_results_b: list[tuple[Path, NormalizationResult]] = []
-    normalized_script_blocks_a: dict[Path, list[PcodeBlock]] = {}
-    normalized_script_blocks_b: dict[Path, list[PcodeBlock]] = {}
+    normalized_script_blocks_a = normalize_scripts(
+        file_a, workspace_a, common_path_scripts | unmatched_a_scripts, use_normalization_cache
+    )
 
-    # Preserve tree structure and transform file "XXXX.pcode" into directory "XXXX/".
+    console.line()
 
-    for script_path in common_path_scripts | unmatched_a_scripts:
-        full_path = (extraction_dir_a / script_path).with_suffix(".pcode")
-        norm_stats = normalize_script(full_path, normalization_dir_a / script_path, should_read_cache_file_a)
-        normalization_results_a.append((script_path, norm_stats))
-        normalized_script_blocks_a[script_path] = norm_stats.blocks
-
-    for script_path in common_path_scripts | unmatched_b_scripts:
-        full_path = (extraction_dir_b / script_path).with_suffix(".pcode")
-        norm_stats = normalize_script(full_path, normalization_dir_b / script_path, should_read_cache_file_b)
-        normalization_results_b.append((script_path, norm_stats))
-        normalized_script_blocks_b[script_path] = norm_stats.blocks
-
-    print(f"{file_a}:")
-
-    norm_table1 = Table(box=box.SIMPLE, show_edge=False, pad_edge=False, show_header=False)
-    norm_table1.add_column("p-code file")
-    norm_table1.add_column("Blocks", justify="right")
-    norm_table1.add_column("Named", justify="right")
-    norm_table1.add_column("Anonymous", justify="right")
-    norm_table1.add_column("Top-level", justify="right")
-
-    for rel_path, stats in normalization_results_a:
-        norm_table1.add_row(
-            str(rel_path),
-            f"{stats.total_blocks} blocks",
-            f"{stats.named_blocks} named",
-            f"{stats.anonymous_blocks} anonymous",
-            f"{stats.toplevel_blocks} top-level",
-        )
-
-    console.print(norm_table1)
-
-    print(f"\n{file_b}:")
-
-    norm_table2 = Table(box=box.SIMPLE, show_edge=False, pad_edge=False, show_header=False)
-    norm_table2.add_column("p-code file")
-    norm_table2.add_column("Blocks", justify="right")
-    norm_table2.add_column("Named", justify="right")
-    norm_table2.add_column("Anonymous", justify="right")
-    norm_table2.add_column("Top-level", justify="right")
-
-    for rel_path, stats in normalization_results_b:
-        norm_table2.add_row(
-            str(rel_path),
-            f"{stats.total_blocks} blocks",
-            f"{stats.named_blocks} named",
-            f"{stats.anonymous_blocks} anonymous",
-            f"{stats.toplevel_blocks} top-level",
-        )
-
-    console.print(norm_table2)
+    normalized_script_blocks_b = normalize_scripts(
+        file_b, workspace_b, common_path_scripts | unmatched_b_scripts, use_normalization_cache
+    )
 
     # ================================================================
     # Step 4: compare normalized p-code blocks to spot the real differences.
@@ -757,12 +721,12 @@ def command(
     diffset = diff_normalized_script_trees(
         common_path_scripts | unmatched_a_scripts,
         common_path_scripts | unmatched_b_scripts,
-        normalization_dir_a,
-        normalization_dir_b,
+        workspace_a.normalization_dir(),
+        workspace_b.normalization_dir(),
     )
 
     # Refine the final difference score on block-level using more noise-reduction tweaks.
-    refine_block_diffs(diffset, normalization_dir_a, normalization_dir_b)
+    refine_block_diffs(diffset, workspace_a.normalization_dir(), workspace_b.normalization_dir())
 
     if diffset.is_empty():
         print(
@@ -807,11 +771,9 @@ def command(
 
         if detailed_diff_format == "as":
             display_detailed_diff_in_actionscript(
-                file_a,
-                extraction_dir_a,
+                workspace_a,
                 normalized_script_blocks_a,
-                file_b,
-                extraction_dir_b,
+                workspace_b,
                 normalized_script_blocks_b,
                 diffset,
                 sort_order=sort_detailed_diff,

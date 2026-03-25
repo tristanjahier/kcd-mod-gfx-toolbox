@@ -2,8 +2,6 @@ from pathlib import Path
 import platform
 import shutil
 import subprocess
-from .swd import SwdFile, parse_swd_file
-from .utils import sha256_str
 
 
 def resolve_ffdec(arg: Path | None) -> Path:
@@ -25,12 +23,6 @@ def resolve_ffdec(arg: Path | None) -> Path:
             raise FileNotFoundError(f"The provided ffdec binary path ({ffdec_path}) does not exist or is not a file.")
 
     return ffdec_path
-
-
-def extraction_cache_key(path: Path) -> str:
-    st = path.stat()
-    sig = f"{path.resolve()}|{st.st_mtime_ns}|{st.st_size}"
-    return sha256_str(sig)
 
 
 def extract_gfx_pcode(ffdec_bin_path: Path, file_path: Path, output_dir: Path):
@@ -56,7 +48,7 @@ def extract_gfx_actionscript(ffdec_bin_path: Path, file_path: Path, output_dir: 
 
 
 def extract_gfx_debug_swd(ffdec_bin_path: Path, file_path: Path, output_dir: Path, pcode: bool):
-    debug_file_name = f"{file_path.stem}_debug{'.pcode' if pcode else '.as'}"
+    debug_file_name = f"debug_{'pcode' if pcode else 'actionscript'}"
     output_path = output_dir / debug_file_name
 
     result = subprocess.run(
@@ -86,19 +78,3 @@ def extract_gfx_contents(ffdec_bin_path: Path, file_path: Path, output_dir: Path
     extract_gfx_actionscript(ffdec_bin_path, file_path, output_dir)
     extract_gfx_debug_swd(ffdec_bin_path, file_path, output_dir, pcode=True)
     extract_gfx_debug_swd(ffdec_bin_path, file_path, output_dir, pcode=False)
-
-
-def read_gfx_debug_swd_files(file_path: Path, output_dir: Path) -> tuple[SwdFile, SwdFile]:
-    """
-    Read the p-code and ActionScript .swd debug files extracted for a given GFx file.
-    """
-    swd_pcode_file = output_dir / f"{file_path.stem}_debug.pcode.swd"
-    swd_actionscript_file = output_dir / f"{file_path.stem}_debug.as.swd"
-
-    if not swd_pcode_file.is_file():
-        raise FileNotFoundError(f"SWD file not found: {swd_pcode_file}.")
-
-    if not swd_actionscript_file.is_file():
-        raise FileNotFoundError(f"SWD file not found: {swd_actionscript_file}.")
-
-    return (parse_swd_file(swd_pcode_file), parse_swd_file(swd_actionscript_file))
