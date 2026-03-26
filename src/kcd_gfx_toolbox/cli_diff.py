@@ -395,11 +395,11 @@ def display_detailed_diff_in_actionscript(
         raise typer.Exit(code=1)
 
     file_a_pcode_to_as_line_map = build_pcode_to_actionscript_line_map(
-        file_a_swd_pcode, file_a_swd_as, {script.side_a_path.as_posix().removeprefix("scripts/") for script in scripts}
+        file_a_swd_pcode, file_a_swd_as, {script.side_a_path.as_posix() for script in scripts}
     )
 
     file_b_pcode_to_as_line_map = build_pcode_to_actionscript_line_map(
-        file_b_swd_pcode, file_b_swd_as, {script.side_b_path.as_posix().removeprefix("scripts/") for script in scripts}
+        file_b_swd_pcode, file_b_swd_as, {script.side_b_path.as_posix() for script in scripts}
     )
 
     context_first_block_diff_display = True
@@ -429,13 +429,13 @@ def display_detailed_diff_in_actionscript(
             workspace_b.find_actionscript_file(script.side_b_path)
         )
 
-        script_a_name = script.side_a_path.as_posix().removeprefix("scripts/")
+        script_a_name = script.side_a_path.as_posix()
         if script_a_name not in file_a_pcode_to_as_line_map:
             print_error(f"Script {script_a_name!r} not found in SWD file.")
             raise typer.Exit(code=1)
         script_a_pcode_to_as = file_a_pcode_to_as_line_map[script_a_name]
 
-        script_b_name = script.side_b_path.as_posix().removeprefix("scripts/")
+        script_b_name = script.side_b_path.as_posix()
         if script_b_name not in file_b_pcode_to_as_line_map:
             print_error(f"Script {script_b_name!r} not found in SWD file.")
             raise typer.Exit(code=1)
@@ -668,7 +668,7 @@ def command(
     print(f"\n{AnsiColor.BLUE}» 2: Searching for file differences{AnsiColor.RESET}\n")
 
     common, only_in_a, only_in_b = diff_file_trees_basic(
-        workspace_a.extraction_dir(), workspace_b.extraction_dir(), "scripts/**/*.pcode"
+        workspace_a.extraction_path("scripts"), workspace_b.extraction_path("scripts"), "**/*.pcode"
     )
 
     common_path_scripts: set[Path] = {p.with_suffix("") for p in common}

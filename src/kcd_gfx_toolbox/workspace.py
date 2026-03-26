@@ -108,7 +108,7 @@ class Workspace:
 
     def normalization_dir(self) -> Path:
         """Return the directory that contains normalized p-code artifacts."""
-        return self._base_path / "normalized"
+        return self._base_path / "normalized_scripts"
 
     def normalization_path(self, rel_path: Path | str) -> Path:
         """Return a path inside the normalization directory."""
@@ -129,7 +129,7 @@ class Workspace:
 
     def find_raw_pcode_file(self, script_path: Path | str) -> Path:
         """Return the path to a raw p-code file for an internal GFx script path."""
-        file = self.extraction_path(script_path).with_suffix(".pcode")
+        file = self.extraction_path(Path("scripts") / script_path).with_suffix(".pcode")
 
         if not file.exists():
             raise FileNotFoundError(f"Script {script_path} not found in workspace at '{file}'.")
@@ -138,7 +138,7 @@ class Workspace:
 
     def find_actionscript_file(self, script_path: Path | str) -> Path:
         """Return the path to a raw ActionScript file for an internal GFx script path."""
-        file = self.extraction_path(script_path).with_suffix(".as")
+        file = self.extraction_path(Path("scripts") / script_path).with_suffix(".as")
 
         if not file.exists():
             raise FileNotFoundError(f"Script {script_path} not found in workspace at '{file}'.")
