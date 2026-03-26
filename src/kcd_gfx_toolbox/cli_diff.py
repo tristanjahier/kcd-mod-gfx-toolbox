@@ -168,7 +168,7 @@ def normalize_scripts(
 
     for rel_path, stats in results:
         result_table.add_row(
-            str(rel_path),
+            rel_path.as_posix(),
             f"{stats.total_blocks} blocks",
             f"{stats.named_blocks} named",
             f"{stats.anonymous_blocks} anonymous",
@@ -452,9 +452,9 @@ def display_detailed_diff_in_actionscript(
             line_count += 1
 
         if script.was_renamed():
-            script_title = f"[bold cyan]{script.side_a_path} [white]→[/white] {script.side_b_path}[/bold cyan]"
+            script_title = f"[bold cyan]{script.side_a_path.as_posix()} [white]→[/white] {script.side_b_path.as_posix()}[/bold cyan]"
         else:
-            script_title = f"[bold cyan]{script.side_a_path}[/bold cyan]"
+            script_title = f"[bold cyan]{script.side_a_path.as_posix()}[/bold cyan]"
 
         if block.was_renamed():
             block_title = f"[bright_yellow]❖[/bright_yellow] {block.side_a_name} [bright_yellow]→[/bright_yellow] {block.side_b_name}"
@@ -682,19 +682,19 @@ def command(
     if unmatched_a_scripts:
         print(f"Scripts only present in {file_a}:")
         for path in sorted(unmatched_a_scripts):
-            print(f"{path}")
+            print(path.as_posix())
         print()
 
     if unmatched_b_scripts:
         print(f"Scripts only present in {file_b}:")
         for path in sorted(unmatched_b_scripts):
-            print(f"{path}")
+            print(path.as_posix())
         print()
 
     if common_path_scripts:
         print("Common scripts that differ:")
         for path in sorted(common_path_scripts):
-            print(f"{path}")
+            print(path.as_posix())
 
     # ================================================================
     # Step 3: normalize the differing scripts (common and unmatched), to remove the noise in p-codes due to
