@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 from __future__ import annotations
-from itertools import zip_longest
 import json
 import re
 from typing import Annotated, Literal, cast
@@ -41,6 +40,7 @@ from .utils import (
     print_warning,
     read_file_lines,
 )
+from .split_diff_view import SplitDiffView, SplitDiffViewPane
 from pathlib import Path
 import shutil
 import subprocess
@@ -538,45 +538,15 @@ def display_detailed_diff_in_actionscript(
         hunk_pairs = align_hunk_pairs(block_a_as_hunks, block_b_as_hunks)
 
         for block_a_hunk, block_b_hunk in hunk_pairs:
-            table = Table(box=None, show_edge=False, pad_edge=False, show_header=False, width=console.width)
-            table.add_column("", justify="right", style="dim")
-            table.add_column("", ratio=1, no_wrap=True, overflow="ellipsis")
-            table.add_column("", justify="right", style="dim")
-            table.add_column("", ratio=1, no_wrap=True, overflow="ellipsis")
-
-            table.add_row(style="on #17171a")
-            line_count += 1
-
-            line_pairs = zip_longest(block_a_hunk, block_b_hunk, fillvalue=(None, None))
-
-            for (a_line, a_text), (b_line, b_text) in line_pairs:
-                if a_line is not None:
-                    a_text = (
-                        f"[bold white]{a_text}[/bold white]"
-                        if a_line in concerned_lines_in_as_source_a
-                        else f"[dim white]{a_text}[/dim white]"
-                    )
-                else:
-                    a_line = a_text = ""
-
-                if b_line is not None:
-                    b_text = (
-                        f"[bold white]{b_text}[/bold white]"
-                        if b_line in concerned_lines_in_as_source_b
-                        else f"[dim white]{b_text}[/dim white]"
-                    )
-                else:
-                    b_line = b_text = ""
-
-                table.add_row(f"{a_line:>6}", a_text, f"{b_line:>6}", b_text, style="on #17171a")
-                line_count += 1
-
-            table.add_row(style="on #17171a")
+            diff_view = SplitDiffView(
+                SplitDiffViewPane(block_a_hunk, highlighted_lines=concerned_lines_in_as_source_a),
+                SplitDiffViewPane(block_b_hunk, highlighted_lines=concerned_lines_in_as_source_b),
+            )
 
             console.line()
-            console.print(table)
+            console.print(diff_view)
             console.line()
-            line_count += 3
+            line_count += diff_view.get_last_render_height() + 2
 
         context_first_block_diff_display = False
 
