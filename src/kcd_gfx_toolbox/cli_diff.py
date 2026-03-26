@@ -8,7 +8,7 @@ from typing import Annotated, Literal, cast
 import typer
 
 from .workspace import Workspace
-from .avm1.pcode_parsing import PcodeBlock, PcodeLine, parse_pcode_file
+from .avm1.pcode_parsing import PcodeBlock, PcodeLine, merge_pcode_lines_sources, parse_pcode_file
 from .swd import (
     build_pcode_to_actionscript_line_map,
     parse_swd_file,
@@ -360,18 +360,17 @@ def display_detailed_diff_in_actionscript(
 
     for script in scripts:
         blocks = sorted(
-            diffset.paired_scripts_block_diffs[script].paired_blocks,
-            key=lambda b: (-b.refined_changed, b.side_a_name, b.side_b_name),
+            diffset.paired_scripts_block_diffs[script].get_differing_blocks(),
+            key=lambda b: (-b.refined_changed, b.side_a_name or b.side_b_name),
         )
 
         for block in blocks:
-            if block.is_paired():
-                sorted_pairs.append((script, block))
+            sorted_pairs.append((script, block))
 
     if sort_order == "changes_asc":
-        sorted_pairs.sort(key=lambda p: (p[1].refined_changed, p[1].side_a_name, p[1].side_b_name))
+        sorted_pairs.sort(key=lambda p: (p[1].refined_changed, p[1].side_a_name or p[1].side_b_name))
     elif sort_order == "changes_desc":
-        sorted_pairs.sort(key=lambda p: (-p[1].refined_changed, p[1].side_a_name, p[1].side_b_name))
+        sorted_pairs.sort(key=lambda p: (-p[1].refined_changed, p[1].side_a_name or p[1].side_b_name))
 
     # Cache for ActionScript sources.
     actionscript_cache: dict[Path, list[str]] = {}
@@ -407,8 +406,6 @@ def display_detailed_diff_in_actionscript(
     for script, block in sorted_pairs:
         assert script.side_a_path is not None  # type guard for static analyzers
         assert script.side_b_path is not None
-        assert block.side_a_name is not None
-        assert block.side_b_name is not None
 
         if max_lines != 0 and line_count >= max_lines:
             console.print(
@@ -444,9 +441,6 @@ def display_detailed_diff_in_actionscript(
         script_a_blocks = normalized_script_blocks_a.get(script.side_a_path, [])
         script_b_blocks = normalized_script_blocks_b.get(script.side_b_path, [])
 
-        if block.changed == 0:
-            continue
-
         if not context_first_block_diff_display:
             console.line()
             line_count += 1
@@ -459,7 +453,7 @@ def display_detailed_diff_in_actionscript(
         if block.was_renamed():
             block_title = f"[bright_yellow]❖[/bright_yellow] {block.side_a_name} [bright_yellow]→[/bright_yellow] {block.side_b_name}"
         else:
-            block_title = f"[bright_yellow]❖[/bright_yellow] {block.side_a_name}"
+            block_title = f"[bright_yellow]❖[/bright_yellow] {block.side_a_name or block.side_b_name}"
 
         console.print(
             Rule(
@@ -470,36 +464,45 @@ def display_detailed_diff_in_actionscript(
         )
         line_count += 1
 
-        block_name_side_a = re.sub(r"^\d+_", "", block.side_a_name)
-        block_name_side_b = re.sub(r"^\d+_", "", block.side_b_name)
+        block_name_side_a = re.sub(r"^\d+_", "", block.side_a_name) if block.side_a_name else None
+        block_name_side_b = re.sub(r"^\d+_", "", block.side_b_name) if block.side_b_name else None
         block_side_a = next((b for b in script_a_blocks if b.name == block_name_side_a), None)
         block_side_b = next((b for b in script_b_blocks if b.name == block_name_side_b), None)
-        assert block_side_a is not None
-        assert block_side_b is not None
 
         # Mapped lines in ActionScript are sparse. Simple naive improvement: propagate mapped
         # lines to subsequent unmapped lines, within the boundaries of the block.
-        block_a_first_line = min(block_side_a.lines[0].source_lines)
-        block_a_last_line = max(block_side_a.lines[-1].source_lines)
-        block_a_pcode_to_as = propagate_mapped_lines_to_subsequent_unmapped_lines(
-            {k: v for k, v in script_a_pcode_to_as.items() if block_a_first_line <= k <= block_a_last_line}
-        )
+        block_a_pcode_to_as: dict[int, int | None] = {}
+        block_b_pcode_to_as: dict[int, int | None] = {}
 
-        block_b_first_line = min(block_side_b.lines[0].source_lines)
-        block_b_last_line = max(block_side_b.lines[-1].source_lines)
-        block_b_pcode_to_as = propagate_mapped_lines_to_subsequent_unmapped_lines(
-            {k: v for k, v in script_b_pcode_to_as.items() if block_b_first_line <= k <= block_b_last_line}
-        )
+        if block_side_a is not None:
+            block_a_first_line = min(block_side_a.lines[0].source_lines)
+            block_a_last_line = max(block_side_a.lines[-1].source_lines)
+            block_a_pcode_to_as = propagate_mapped_lines_to_subsequent_unmapped_lines(
+                {k: v for k, v in script_a_pcode_to_as.items() if block_a_first_line <= k <= block_a_last_line}
+            )
+
+        if block_side_b is not None:
+            block_b_first_line = min(block_side_b.lines[0].source_lines)
+            block_b_last_line = max(block_side_b.lines[-1].source_lines)
+            block_b_pcode_to_as = propagate_mapped_lines_to_subsequent_unmapped_lines(
+                {k: v for k, v in script_b_pcode_to_as.items() if block_b_first_line <= k <= block_b_last_line}
+            )
 
         concerned_lines_in_raw_block_a = []
         concerned_lines_in_raw_block_b = []
 
-        for diff_span_a, diff_span_b in block.diff_spans:
-            for pcode_line in block_side_a.lines[diff_span_a[0] : diff_span_a[1]]:
-                concerned_lines_in_raw_block_a.extend(pcode_line.source_lines)
+        if block.is_paired():
+            for diff_span_a, diff_span_b in block.diff_spans:
+                for pcode_line in block_side_a.lines[diff_span_a[0] : diff_span_a[1]]:
+                    concerned_lines_in_raw_block_a.extend(pcode_line.source_lines)
 
-            for pcode_line in block_side_b.lines[diff_span_b[0] : diff_span_b[1]]:
-                concerned_lines_in_raw_block_b.extend(pcode_line.source_lines)
+                for pcode_line in block_side_b.lines[diff_span_b[0] : diff_span_b[1]]:
+                    concerned_lines_in_raw_block_b.extend(pcode_line.source_lines)
+        else:
+            if block_side_a:
+                concerned_lines_in_raw_block_a = merge_pcode_lines_sources(*block_side_a.lines)
+            if block_side_b:
+                concerned_lines_in_raw_block_b = merge_pcode_lines_sources(*block_side_b.lines)
 
         concerned_lines_in_raw_block_a = sorted(set(concerned_lines_in_raw_block_a))
         concerned_lines_in_raw_block_b = sorted(set(concerned_lines_in_raw_block_b))
