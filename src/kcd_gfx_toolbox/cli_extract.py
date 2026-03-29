@@ -3,10 +3,11 @@
 from pathlib import Path
 import subprocess
 from typing import Annotated
+from rich.markup import escape
 import typer
 
 from .extraction import extract_gfx_contents, resolve_ffdec
-from .utils import AnsiColor, ensure_empty_dir, print_error
+from .utils import console, ensure_empty_dir, print_error
 from .workspace import Workspace
 
 
@@ -29,7 +30,7 @@ def command(
     input_file = input_file.resolve()
 
     if not input_file.is_file():
-        print_error(f"Invalid input: {input_file} does not exist or is not a file.")
+        print_error(f"Invalid input: {escape(str(input_file))} does not exist or is not a file.")
         raise typer.Exit(code=1)
 
     if output_dir is None:
@@ -43,9 +44,9 @@ def command(
         print_error(e)
         raise typer.Exit(code=1)
 
-    print(f"Using ffdec at {ffdec_path}")
+    console.print(f"Using ffdec at {escape(str(ffdec_path))}")
 
-    print(f"Extracting {input_file.name} contents in: {output_dir}")
+    console.print(f"Extracting {escape(input_file.name)} contents in: {escape(str(output_dir))}")
 
     ensure_empty_dir(output_dir)
 
@@ -54,7 +55,7 @@ def command(
     except subprocess.CalledProcessError as e:
         print_error(f"ffdec failed with code {e.returncode}:")
         if e.stderr:
-            print_error(e.stderr)
+            print_error(escape(str(e.stderr)))
         raise typer.Exit(code=1)
 
-    print(f"{AnsiColor.GREEN}Extraction complete.{AnsiColor.RESET}")
+    console.print("[green]Extraction complete.[/green]")

@@ -17,7 +17,9 @@ class SplitDiffView:
 
     def get_last_render_height(self) -> int:
         if self._last_render_height is None:
-            raise RuntimeError(f"Cannot call {self.__class__.__name__}.get_last_render_height before rendering the component.")
+            raise RuntimeError(
+                f"Cannot call {self.__class__.__name__}.get_last_render_height before rendering the component."
+            )
 
         return self._last_render_height
 
@@ -102,14 +104,13 @@ class SplitDiffViewPane:
         line_highlighting = bool(self.highlighted_lines)
 
         for ln, text in self.text_hunk:
+            text = Text(text)
+
             if ln is None:
                 ln = ""
-            elif line_highlighting:
-                if ln in self.highlighted_lines:
-                    style = "bold"
-                else:
-                    style = "dim"
-                text = Text(text, style=style)
+
+            if line_highlighting:
+                text.style = "bold" if ln in self.highlighted_lines else "dim"
 
             grid.add_row(str(ln), text)
 

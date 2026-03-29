@@ -1,38 +1,37 @@
 import re
 import shutil
-import sys
 import hashlib
 from pathlib import Path
-from enum import StrEnum
 import tempfile
+from rich.console import Console
+from rich.markup import escape
 
 
-class AnsiColor(StrEnum):
-    """
-    A collection of ANSI escape codes used by CLI output formatting.
-    """
+"""Shared instance of Rich console."""
+console = Console()
 
-    RED = "\x1b[91m"
-    GREEN = "\x1b[32m"
-    YELLOW = "\x1b[33m"
-    LIGHT_YELLOW = "\x1b[93m"
-    BLUE = "\x1b[36m"
-    DIM = "\x1b[2m"
-    RESET = "\x1b[0m"
+"""Shared instance of Rich console that outputs to stderr."""
+stderr_console = Console(stderr=True)
 
 
-def print_error(err: str | BaseException):
+def print_error(message: str | BaseException):
     """
     Print an error message (or exception) in the console.
     """
-    print(f"{AnsiColor.RED}ERROR: {err}{AnsiColor.RESET}", file=sys.stderr)
+    if isinstance(message, BaseException):
+        message = escape(str(message))
+
+    stderr_console.print(f"ERROR: {message}", style="bold red")
 
 
 def print_warning(message: str | BaseException):
     """
     Print a warning message (or exception) in the console.
     """
-    print(f"{AnsiColor.YELLOW}WARNING: {message}{AnsiColor.RESET}", file=sys.stderr)
+    if isinstance(message, BaseException):
+        message = escape(str(message))
+
+    stderr_console.print(f"WARNING: {message}", style="bold yellow")
 
 
 def list_tree_files(path: Path, glob: str | None = None) -> set[Path]:

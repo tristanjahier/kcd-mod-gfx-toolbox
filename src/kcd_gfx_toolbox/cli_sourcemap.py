@@ -1,15 +1,15 @@
 from __future__ import annotations
 from typing import Annotated
 from pathlib import Path
+from rich.markup import escape
 from rich.rule import Rule
 import typer
-from rich.console import Console
 from rich.table import Table
 
 from .avm1.pcode_parsing import parse_pcode_file
 from .avm1.pcode_normalization import split_into_blocks, normalize_block
 from .swd import build_pcode_to_actionscript_line_map, parse_swd_file
-from .utils import print_error, read_file_lines
+from .utils import console, print_error, read_file_lines
 from .workspace import Workspace
 
 
@@ -34,19 +34,17 @@ def command(
     Inspect the sourcemap for a GFx file (and a specific script and p-code block),
     showing the correspondence between p-code lines and their decompiled ActionScript source lines.
     """
-    console = Console()
-
     gfx_file = gfx_file.resolve()
 
     if not gfx_file.is_file():
-        print_error(f"Invalid input: {gfx_file} is not a file.")
+        print_error(f"Invalid input: {escape(str(gfx_file))} is not a file.")
         raise typer.Exit(code=1)
 
     if workspace_dir is None:
         workspace = Workspace.create_as_temporary_directory(gfx_file)
     else:
         if not workspace_dir.is_dir():
-            print_error(f"Workspace directory not found: {workspace_dir}. Run 'kcd-gfx extract' first.")
+            print_error(f"Workspace directory not found: {escape(str(workspace_dir))}. Run 'kcd-gfx extract' first.")
             raise typer.Exit(code=1)
 
         workspace = Workspace(workspace_dir)
@@ -94,7 +92,7 @@ def command(
     actionscript_file = workspace.extraction_path(f"scripts/{script_path}.as")
 
     if not actionscript_file.is_file():
-        print_error(f"ActionScript file not found: {actionscript_file}")
+        print_error(f"ActionScript file not found: {escape(str(actionscript_file))}")
         raise typer.Exit(code=1)
 
     actionscript_lines = read_file_lines(actionscript_file)
@@ -132,7 +130,7 @@ def command(
             else:
                 as_line = last_known_as_line
 
-            as_text = (
+            as_text = escape(
                 actionscript_lines[as_line] if as_line is not None and as_line <= len(actionscript_lines) else ""
             ).strip()
 
@@ -141,7 +139,7 @@ def command(
 
             as_line = as_line if as_line is not None else "~"
 
-            table.add_row(f"{src_line:>6}", pcode_line.render(), f"{as_line:>6}", as_text, style="on #17171a")
+            table.add_row(f"{src_line:>6}", escape(pcode_line.render()), f"{as_line:>6}", as_text, style="on #17171a")
 
     table.add_row(style="on #17171a")
     console.print(table)

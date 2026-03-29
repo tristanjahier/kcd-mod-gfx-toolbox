@@ -33,7 +33,7 @@ from .file_diff import (
     diff_file_trees_basic,
 )
 from .utils import (
-    AnsiColor,
+    console,
     ensure_empty_dir,
     list_tree_files,
     print_error,
@@ -44,19 +44,21 @@ from .split_diff_view import SplitDiffView, SplitDiffViewPane
 from pathlib import Path
 import shutil
 import subprocess
-from rich.console import Console
 from rich.table import Table
 from rich import box
 from rich.rule import Rule
+from rich.markup import escape
 
 
 def extract_gfx_file(ffdec_path: Path, gfx_file: Path, workspace: Workspace, read_cache: bool):
     extraction_dir = workspace.extraction_dir()
-    print(f"{gfx_file} -> \033]8;;{extraction_dir.as_uri()}\033\\{extraction_dir}\033]8;;\033\\")
+    console.print(
+        f"{escape(str(gfx_file))} -> [link={escape(extraction_dir.as_uri())}]{escape(str(extraction_dir))}[/link]"
+    )
 
     if read_cache and workspace.extraction_dir_has_content():
         if workspace.extraction_dir_has_valid_contents():
-            print("Extracted content already present in the target directory. Skipping.")
+            console.print("Extracted content already present in the target directory. Skipping.")
             return
         else:
             print_warning(
@@ -75,7 +77,7 @@ def extract_gfx_file(ffdec_path: Path, gfx_file: Path, workspace: Workspace, rea
     except subprocess.CalledProcessError as e:
         print_error(f"ffdec failed with code {e.returncode}:")
         if e.stderr:
-            print_error(e.stderr)
+            print_error(escape(str(e.stderr)))
         raise typer.Exit(code=1)
 
 
@@ -142,7 +144,7 @@ def normalize_scripts(
             try:
                 norm_stats = read_cached_normalized_blocks(normalized_script_dir)
             except FileNotFoundError:
-                print_warning(f"Normalization cache missing: {normalized_script_dir}.")  # Not fatal
+                print_warning(f"Normalization cache missing: {escape(str(normalized_script_dir))}.")  # Not fatal
 
         if norm_stats is None:
             ensure_empty_dir(normalized_script_dir)
@@ -150,14 +152,14 @@ def normalize_scripts(
             try:
                 norm_stats = normalize_file(raw_script_path, normalized_script_dir)
             except Exception as e:
-                print_error(f"Normalization failed: {raw_script_path}")
+                print_error(f"Normalization failed: {escape(str(raw_script_path))}")
                 print_error(e)
                 raise typer.Exit(code=1)
 
         results.append((script_path, norm_stats))
         normalized_script_blocks[script_path] = norm_stats.blocks
 
-    print(f"{gfx_file}:")
+    console.print(f"{escape(str(gfx_file))}:")
 
     result_table = Table(box=box.SIMPLE, show_edge=False, pad_edge=False, show_header=False)
     result_table.add_column("p-code file")
@@ -175,7 +177,6 @@ def normalize_scripts(
             f"{stats.toplevel_blocks} top-level",
         )
 
-    console = Console()
     console.print(result_table)
 
     return normalized_script_blocks
@@ -288,7 +289,6 @@ def display_detailed_diff_in_pcode(
     """
     Display line-by-line differences for each modified script block.
     """
-    console = Console()
     line_count = 0
 
     sorted_pairs: list[tuple[GfxScript, GfxScriptBlock]] = []
@@ -326,18 +326,18 @@ def display_detailed_diff_in_pcode(
 
             if line.startswith("---"):
                 line = f"--- a/{script.side_a_path.as_posix()}:{block.side_a_name}"
-                console.print(f"[bold]{line}[/bold]", highlight=False)
+                console.print(f"[bold]{escape(line)}[/bold]", highlight=False)
             elif line.startswith("+++"):
                 line = f"+++ b/{script.side_b_path.as_posix()}:{block.side_b_name}"
-                console.print(f"[bold]{line}[/bold]", highlight=False)
+                console.print(f"[bold]{escape(line)}[/bold]", highlight=False)
             elif line.startswith("@@"):
-                console.print(f"[cyan]{line}[/cyan]", highlight=False)
+                console.print(f"[cyan]{escape(line)}[/cyan]", highlight=False)
             elif line.startswith("+"):
-                console.print(f"[green]{line}[/green]", highlight=False)
+                console.print(f"[green]{escape(line)}[/green]", highlight=False)
             elif line.startswith("-"):
-                console.print(f"[red]{line}[/red]", highlight=False)
+                console.print(f"[red]{escape(line)}[/red]", highlight=False)
             else:
-                console.print(line, highlight=False)
+                console.print(escape(line), highlight=False)
 
             line_count += 1
 
@@ -351,7 +351,6 @@ def display_detailed_diff_in_actionscript(
     sort_order: Literal["default", "changes_desc", "changes_asc"] = "default",
     max_lines: int = 0,
 ):
-    console = Console()
     line_count = 0
 
     sorted_pairs: list[tuple[GfxScript, GfxScriptBlock]] = []
@@ -378,7 +377,7 @@ def display_detailed_diff_in_actionscript(
     def _read_actionscript_source_lines(file: Path) -> list[str]:
         if file not in actionscript_cache:
             if not file.is_file():
-                print_error(f"ActionScript file not found: {file}.")
+                print_error(f"ActionScript file not found: {escape(str(file))}.")
                 raise typer.Exit(code=1)
             actionscript_cache[file] = read_file_lines(file)
 
@@ -597,20 +596,15 @@ def command(
     """
     Compare scripts between two GFx files to surface meaningful changes through normalization.
     """
-    console = Console()
-
-    # ================================================================
-    # Sanity checks
-
     file_a = file_a.resolve()
     file_b = file_b.resolve()
 
     if not file_a.is_file():
-        print_error(f"Invalid input: {file_a} is not a file.")
+        print_error(f"Invalid input: {escape(str(file_a))} is not a file.")
         raise typer.Exit(code=1)
 
     if not file_b.is_file():
-        print_error(f"Invalid input: {file_b} is not a file.")
+        print_error(f"Invalid input: {escape(str(file_b))} is not a file.")
         raise typer.Exit(code=1)
 
     workspace_a = Workspace.create_as_temporary_directory(file_a)
@@ -622,15 +616,17 @@ def command(
         print_error(e)
         raise typer.Exit(code=1)
 
-    print(f"{AnsiColor.LIGHT_YELLOW}File A:{AnsiColor.RESET} {file_a}")
-    print(f"{AnsiColor.LIGHT_YELLOW}File B:{AnsiColor.RESET} {file_b}")
-    print(f"{AnsiColor.LIGHT_YELLOW}Using ffdec:{AnsiColor.RESET} {ffdec_path}")
+    console.print(f"[bold yellow]File A:[/bold yellow] {escape(str(file_a))}")
+    console.print(f"[bold yellow]File B:[/bold yellow] {escape(str(file_b))}")
+    console.print(f"[bold yellow]Using ffdec:[/bold yellow] {escape(str(ffdec_path))}")
 
     # ================================================================
     # Step 1: extract contents from both files.
     # For that we use "JPEXS Free Flash Decompiler" aka ffdec.
 
-    print(f"\n{AnsiColor.BLUE}» 1: Extraction of GFX scripts as p-code{AnsiColor.RESET}\n")
+    console.line()
+    console.print("[cyan]» 1: Extraction of GFX scripts as p-code[/cyan]", highlight=False)
+    console.line()
 
     extract_gfx_file(ffdec_path, file_a, workspace_a, use_extraction_cache)
     extract_gfx_file(ffdec_path, file_b, workspace_b, use_extraction_cache)
@@ -638,7 +634,9 @@ def command(
     # ================================================================
     # Step 2: perform a naive diff between the two directory trees.
 
-    print(f"\n{AnsiColor.BLUE}» 2: Searching for file differences{AnsiColor.RESET}\n")
+    console.line()
+    console.print("[cyan]» 2: Searching for file differences[/cyan]", highlight=False)
+    console.line()
 
     common, only_in_a, only_in_b = diff_file_trees_basic(
         workspace_a.extraction_path("scripts"), workspace_b.extraction_path("scripts"), "**/*.pcode"
@@ -649,32 +647,34 @@ def command(
     unmatched_b_scripts: set[Path] = {p.with_suffix("") for p in only_in_b}
 
     if not common_path_scripts and not unmatched_a_scripts and not unmatched_b_scripts:
-        print(f"{AnsiColor.GREEN}Both files are identical.{AnsiColor.RESET}")
+        console.print("[green]Both files are identical.[/green]")
         return
 
     if unmatched_a_scripts:
-        print(f"Scripts only present in {file_a}:")
+        console.print(f"Scripts only present in {escape(str(file_a))}:")
         for path in sorted(unmatched_a_scripts):
-            print(path.as_posix())
-        print()
+            console.print(path.as_posix())
+        console.print()
 
     if unmatched_b_scripts:
-        print(f"Scripts only present in {file_b}:")
+        console.print(f"Scripts only present in {escape(str(file_b))}:")
         for path in sorted(unmatched_b_scripts):
-            print(path.as_posix())
-        print()
+            console.print(path.as_posix())
+        console.print()
 
     if common_path_scripts:
-        print("Common scripts that differ:")
+        console.print("Common scripts that differ:")
         for path in sorted(common_path_scripts):
-            print(path.as_posix())
+            console.print(path.as_posix())
 
     # ================================================================
     # Step 3: normalize the differing scripts (common and unmatched), to remove the noise in p-codes due to
     # decompilation, and to highlight the real logical differences. The normalization is done at a "block level".
     # Files are split into blocks (top level scope, functions).
 
-    print(f"\n{AnsiColor.BLUE}» 3: Normalizing differing scripts into p-code blocks{AnsiColor.RESET}\n")
+    console.line()
+    console.print("[cyan]» 3: Normalizing differing scripts into p-code blocks[/cyan]", highlight=False)
+    console.line()
 
     normalized_script_blocks_a = normalize_scripts(
         file_a, workspace_a, common_path_scripts | unmatched_a_scripts, use_normalization_cache
@@ -689,7 +689,9 @@ def command(
     # ================================================================
     # Step 4: compare normalized p-code blocks to spot the real differences.
 
-    print(f"\n{AnsiColor.BLUE}» 4: Comparison of normalized code{AnsiColor.RESET}\n")
+    console.line()
+    console.print("[cyan]» 4: Comparison of normalized code[/cyan]", highlight=False)
+    console.line()
 
     diffset = diff_normalized_script_trees(
         common_path_scripts | unmatched_a_scripts,
@@ -702,8 +704,8 @@ def command(
     refine_block_diffs(diffset, workspace_a.normalization_dir(), workspace_b.normalization_dir())
 
     if diffset.is_empty():
-        print(
-            f"{AnsiColor.GREEN}Normalized trees are identical. The difference might be decompilation noise only.{AnsiColor.RESET}"
+        console.print(
+            "[green]Normalized trees are identical. The difference might be decompilation noise only.[/green]"
         )
         return
 

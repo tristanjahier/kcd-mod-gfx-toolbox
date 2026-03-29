@@ -2,9 +2,10 @@
 
 from pathlib import Path
 from typing import Annotated
+from rich.markup import escape
 import typer
 from .avm1.pcode_normalization import normalize_file
-from .utils import AnsiColor, print_error
+from .utils import console, print_error
 
 
 def command(
@@ -24,16 +25,16 @@ def command(
     input_file = input_file.resolve()
 
     if not input_file.is_file():
-        print_error(f"Invalid input: {input_file} does not exist or is not a file.")
+        print_error(f"Invalid input: {escape(str(input_file))} does not exist or is not a file.")
         raise typer.Exit(code=1)
 
     output_dir = output_dir.resolve()
 
     stats = normalize_file(input_file, output_dir, write_source_maps=write_source_maps)
 
-    print(
-        f"{input_file.name}: split into {stats.total_blocks} blocks",
+    console.print(
+        f"{escape(input_file.name)}: split into {stats.total_blocks} blocks",
         f"({stats.named_blocks} named, {stats.anonymous_blocks} anonymous, {stats.toplevel_blocks} top-level)",
     )
 
-    print(f"{AnsiColor.GREEN}Normalization complete.{AnsiColor.RESET}")
+    console.print("[green]Normalization complete.[/green]")
