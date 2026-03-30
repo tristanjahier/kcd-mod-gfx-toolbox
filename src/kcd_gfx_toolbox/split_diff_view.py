@@ -1,5 +1,6 @@
 from __future__ import annotations
 from math import ceil, floor
+from typing import Self
 from rich.console import Console, ConsoleOptions, RenderResult, RenderableType
 from rich.padding import Padding, PaddingDimensions
 from rich.table import Table
@@ -81,6 +82,20 @@ class SplitDiffView:
         self._last_render_height = target_height
 
         yield grid
+
+    @classmethod
+    def from_text_hunk_pair(
+        cls,
+        left_text_hunk: TextHunk,
+        right_text_hunk: TextHunk,
+        left_highlighted_lines: set[int] | None = None,
+        right_highlighted_lines: set[int] | None = None,
+        **kwargs,
+    ) -> Self:
+        return cls(
+            SplitDiffViewPane(left_text_hunk, highlighted_lines=left_highlighted_lines, **kwargs),
+            SplitDiffViewPane(right_text_hunk, highlighted_lines=right_highlighted_lines, **kwargs),
+        )
 
 
 class SplitDiffViewPane:

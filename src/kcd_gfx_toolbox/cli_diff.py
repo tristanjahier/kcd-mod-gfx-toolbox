@@ -40,7 +40,7 @@ from .utils import (
     print_warning,
     read_file_lines,
 )
-from .split_diff_view import SplitDiffView, SplitDiffViewPane
+from .split_diff_view import SplitDiffView
 from pathlib import Path
 import shutil
 import subprocess
@@ -538,19 +538,13 @@ def display_detailed_diff_in_actionscript(
         hunk_pairs = align_hunk_pairs(block_a_as_hunks, block_b_as_hunks)
 
         for block_a_hunk, block_b_hunk in hunk_pairs:
-            diff_view = SplitDiffView(
-                SplitDiffViewPane(
-                    block_a_hunk,
-                    highlighted_lines=concerned_lines_in_as_source_a,
-                    syntax_lexer=ActionScriptLexer(),
-                    word_wrap=True,
-                ),
-                SplitDiffViewPane(
-                    block_b_hunk,
-                    highlighted_lines=concerned_lines_in_as_source_b,
-                    syntax_lexer=ActionScriptLexer(),
-                    word_wrap=True,
-                ),
+            diff_view = SplitDiffView.from_text_hunk_pair(
+                block_a_hunk,
+                block_b_hunk,
+                left_highlighted_lines=concerned_lines_in_as_source_a,
+                right_highlighted_lines=concerned_lines_in_as_source_b,
+                syntax_lexer=ActionScriptLexer(),
+                word_wrap=True,
             )
 
             console.line()
