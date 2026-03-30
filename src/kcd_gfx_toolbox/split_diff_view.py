@@ -4,8 +4,42 @@ from rich.console import Console, ConsoleOptions, RenderResult, RenderableType
 from rich.padding import Padding, PaddingDimensions
 from rich.table import Table
 from rich.text import Text
+from pygments.lexer import Lexer
+from pygments.style import Style as PygmentsStyle
+from pygments.styles.material import MaterialStyle as DefaultPygmentStyle
+from pygments import lex as pygments_lex
 
 from .file_diff import TextHunk
+
+
+def _highlight_line(line: str, lexer: Lexer, pygments_style: type[PygmentsStyle]) -> Text:
+    """
+    Tokenize a line of source code with Pygments and return a rich.Text with syntax highlighting.
+    The trailing newline appended by Pygments is stripped.
+    """
+    rich_text = Text()
+
+    for token_type, value in pygments_lex(line, lexer):
+        value = value.rstrip("\n")
+
+        if not value:
+            continue
+
+        style_dict = pygments_style.style_for_token(token_type)
+        rich_styles = []
+
+        if color := style_dict.get("color"):
+            rich_styles.append(f"#{color}")
+        if style_dict.get("bold"):
+            rich_styles.append("bold")
+        if style_dict.get("italic"):
+            rich_styles.append("italic")
+        if style_dict.get("underline"):
+            rich_styles.append("underline")
+
+        rich_text.append(value, style=" ".join(rich_styles))
+
+    return rich_text
 
 
 class SplitDiffView:
@@ -57,12 +91,16 @@ class SplitDiffViewPane:
         background_color: str | None = "#17171a",
         padding: PaddingDimensions = (1, 1),
         word_wrap: bool = False,
+        syntax_lexer: Lexer | None = None,
+        pygments_style: type[PygmentsStyle] | None = None,
     ):
         self.text_hunk = text_hunk
         self.highlighted_lines = highlighted_lines or set()
         self.background_color = background_color
         self.padding = padding
         self.word_wrap = word_wrap
+        self.syntax_lexer = syntax_lexer
+        self.pygments_style: type[PygmentsStyle] = pygments_style or DefaultPygmentStyle
         self.gutter_min_width: int = 5
         self.gutter_text_spacing: int = 3
 
@@ -104,7 +142,10 @@ class SplitDiffViewPane:
         line_highlighting = bool(self.highlighted_lines)
 
         for ln, text in self.text_hunk:
-            text = Text(text)
+            if self.syntax_lexer is not None:
+                text = _highlight_line(text, self.syntax_lexer, self.pygments_style)
+            else:
+                text = Text(text)
 
             if ln is None:
                 ln = ""

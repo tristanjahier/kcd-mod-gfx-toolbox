@@ -48,6 +48,7 @@ from rich.table import Table
 from rich import box
 from rich.rule import Rule
 from rich.markup import escape
+from pygments.lexers import ActionScriptLexer
 
 
 def extract_gfx_file(ffdec_path: Path, gfx_file: Path, workspace: Workspace, read_cache: bool):
@@ -538,8 +539,12 @@ def display_detailed_diff_in_actionscript(
 
         for block_a_hunk, block_b_hunk in hunk_pairs:
             diff_view = SplitDiffView(
-                SplitDiffViewPane(block_a_hunk, highlighted_lines=concerned_lines_in_as_source_a),
-                SplitDiffViewPane(block_b_hunk, highlighted_lines=concerned_lines_in_as_source_b),
+                SplitDiffViewPane(
+                    block_a_hunk, highlighted_lines=concerned_lines_in_as_source_a, syntax_lexer=ActionScriptLexer()
+                ),
+                SplitDiffViewPane(
+                    block_b_hunk, highlighted_lines=concerned_lines_in_as_source_b, syntax_lexer=ActionScriptLexer()
+                ),
             )
 
             console.line()
