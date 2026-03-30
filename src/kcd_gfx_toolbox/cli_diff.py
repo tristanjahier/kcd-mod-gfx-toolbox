@@ -540,10 +540,16 @@ def display_detailed_diff_in_actionscript(
         for block_a_hunk, block_b_hunk in hunk_pairs:
             diff_view = SplitDiffView(
                 SplitDiffViewPane(
-                    block_a_hunk, highlighted_lines=concerned_lines_in_as_source_a, syntax_lexer=ActionScriptLexer()
+                    block_a_hunk,
+                    highlighted_lines=concerned_lines_in_as_source_a,
+                    syntax_lexer=ActionScriptLexer(),
+                    word_wrap=True,
                 ),
                 SplitDiffViewPane(
-                    block_b_hunk, highlighted_lines=concerned_lines_in_as_source_b, syntax_lexer=ActionScriptLexer()
+                    block_b_hunk,
+                    highlighted_lines=concerned_lines_in_as_source_b,
+                    syntax_lexer=ActionScriptLexer(),
+                    word_wrap=True,
                 ),
             )
 
