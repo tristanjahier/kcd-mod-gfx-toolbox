@@ -8,10 +8,10 @@ from rich.markup import escape
 
 
 """Shared instance of Rich console."""
-console = Console()
+console = Console(width=280)
 
 """Shared instance of Rich console that outputs to stderr."""
-stderr_console = Console(stderr=True)
+stderr_console = Console(stderr=True, width=280)
 
 
 def print_error(message: str | BaseException):
