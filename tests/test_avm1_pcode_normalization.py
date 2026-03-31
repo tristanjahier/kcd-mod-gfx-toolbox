@@ -318,17 +318,24 @@ def test_split_into_blocks_numbers_duplicate_block_names():
         Push 1
         }
         SetMember
+        If loc0e3c
+        Push "_global"
+        GetVariable
         Push register2
         Push "SameName"
         DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {
         Push 2
         }
         SetMember
+        Push register2
+        Push "E_IS_Condition"
+        Push 4
+        SetMember
     """)
 
     blocks = split_into_blocks(pcode_sample)
 
-    assert [block.name for block in blocks] == ["SameName", "SameName__2"]
+    assert [block.name for block in blocks] == ["SameName", "__toplevel", "SameName__2", "__toplevel__2"]
 
 
 def test_canonicalize_push_lines():

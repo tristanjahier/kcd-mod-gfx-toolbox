@@ -106,6 +106,10 @@ def split_into_blocks(pcode_file: PcodeBlock) -> list[PcodeBlock]:
     name_occurrences: dict[str, int] = {}
 
     def add_block(name: str, a: int, b: int):
+        occurrences = name_occurrences.get(name, 0)
+        name_occurrences[name] = occurrences + 1
+        if occurrences > 0:
+            name = f"{name}__{occurrences + 1}"
         blocks.append(PcodeBlock(lines=pcode_file.lines[a:b], name=name))
 
     i = 0
@@ -150,14 +154,9 @@ def split_into_blocks(pcode_file: PcodeBlock) -> list[PcodeBlock]:
                 end += 1
 
             block_name = safe_filename(func_name)
+
             if not block_name:
                 block_name = "__anonymous"
-
-            count = name_occurrences.get(block_name, 0)
-            name_occurrences[block_name] = count + 1
-
-            if count > 0:
-                block_name = f"{block_name}__{count + 1}"
 
             add_block(block_name, start, end + 1)
 
