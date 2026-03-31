@@ -508,13 +508,19 @@ def display_detailed_diff_in_actionscript(
         concerned_lines_in_as_source_a: set[int] = set()
         for ln in concerned_lines_in_raw_block_a:
             as_src_line = block_a_pcode_to_as.get(ln)
-            if as_src_line is not None and as_src_line <= len(script_a_actionscript_lines):
+            if as_src_line is not None:
+                assert 0 <= as_src_line < len(script_a_actionscript_lines), (
+                    f"Mapped ActionScript line {as_src_line} is out of bounds! Side A script {script_a_name} has {len(script_a_actionscript_lines)} lines."
+                )
                 concerned_lines_in_as_source_a.add(as_src_line)
 
         concerned_lines_in_as_source_b: set[int] = set()
         for ln in concerned_lines_in_raw_block_b:
             as_src_line = block_b_pcode_to_as.get(ln)
-            if as_src_line is not None and as_src_line <= len(script_b_actionscript_lines):
+            if as_src_line is not None:
+                assert 0 <= as_src_line < len(script_b_actionscript_lines), (
+                    f"Mapped ActionScript line {as_src_line} is out of bounds! Side B script {script_b_name} has {len(script_b_actionscript_lines)} lines."
+                )
                 concerned_lines_in_as_source_b.add(as_src_line)
 
         block_a_corpus_lines: list[str]
