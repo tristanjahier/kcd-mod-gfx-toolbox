@@ -48,6 +48,7 @@ from rich.table import Table
 from rich import box
 from rich.rule import Rule
 from rich.markup import escape
+from pygments.lexer import Lexer
 from pygments.lexers import ActionScriptLexer
 
 
@@ -488,62 +489,88 @@ def display_detailed_diff_in_actionscript(
                 {k: v for k, v in script_b_pcode_to_as.items() if block_b_first_line <= k <= block_b_last_line}
             )
 
-        concerned_lines_in_raw_block_a = []
-        concerned_lines_in_raw_block_b = []
+        concerned_lines_in_raw_block_a: set[int] = set()
+        concerned_lines_in_raw_block_b: set[int] = set()
 
         if block.is_paired():
             for diff_span_a, diff_span_b in block.diff_spans:
                 for pcode_line in block_side_a.lines[diff_span_a[0] : diff_span_a[1]]:
-                    concerned_lines_in_raw_block_a.extend(pcode_line.source_lines)
+                    concerned_lines_in_raw_block_a.update(pcode_line.source_lines)
 
                 for pcode_line in block_side_b.lines[diff_span_b[0] : diff_span_b[1]]:
-                    concerned_lines_in_raw_block_b.extend(pcode_line.source_lines)
+                    concerned_lines_in_raw_block_b.update(pcode_line.source_lines)
         else:
-            if block_side_a:
-                concerned_lines_in_raw_block_a = merge_pcode_lines_sources(*block_side_a.lines)
-            if block_side_b:
-                concerned_lines_in_raw_block_b = merge_pcode_lines_sources(*block_side_b.lines)
+            if block_side_a is not None:
+                concerned_lines_in_raw_block_a = set(merge_pcode_lines_sources(*block_side_a.lines))
+            if block_side_b is not None:
+                concerned_lines_in_raw_block_b = set(merge_pcode_lines_sources(*block_side_b.lines))
 
-        concerned_lines_in_raw_block_a = sorted(set(concerned_lines_in_raw_block_a))
-        concerned_lines_in_raw_block_b = sorted(set(concerned_lines_in_raw_block_b))
-
-        concerned_lines_in_as_source_a = []
+        concerned_lines_in_as_source_a: set[int] = set()
         for ln in concerned_lines_in_raw_block_a:
             as_src_line = block_a_pcode_to_as.get(ln)
             if as_src_line is not None and as_src_line <= len(script_a_actionscript_lines):
-                concerned_lines_in_as_source_a.append(as_src_line)
+                concerned_lines_in_as_source_a.add(as_src_line)
 
-        concerned_lines_in_as_source_b = []
+        concerned_lines_in_as_source_b: set[int] = set()
         for ln in concerned_lines_in_raw_block_b:
             as_src_line = block_b_pcode_to_as.get(ln)
             if as_src_line is not None and as_src_line <= len(script_b_actionscript_lines):
-                concerned_lines_in_as_source_b.append(as_src_line)
+                concerned_lines_in_as_source_b.add(as_src_line)
 
-        concerned_lines_in_as_source_a = set(concerned_lines_in_as_source_a)
-        concerned_lines_in_as_source_b = set(concerned_lines_in_as_source_b)
+        block_a_corpus_lines: list[str]
+        block_a_diff_lines: set[int]
+        block_b_corpus_lines: list[str]
+        block_b_diff_lines: set[int]
+        syntax_lexer: Lexer | None
 
-        if not concerned_lines_in_as_source_a and not concerned_lines_in_as_source_b:
+        if concerned_lines_in_as_source_a or concerned_lines_in_as_source_b:
+            block_a_corpus_lines = script_a_actionscript_lines
+            block_a_diff_lines = concerned_lines_in_as_source_a
+            block_b_corpus_lines = script_b_actionscript_lines
+            block_b_diff_lines = concerned_lines_in_as_source_b
+            syntax_lexer = ActionScriptLexer()
+        else:
             console.line()
-            console.print("[yellow]Unable to map pcode lines to ActionScript source for this block.[/yellow]")
-            console.line()
-            line_count += 3
-            continue
+            console.print(
+                "[yellow]Unable to map pcode lines to ActionScript source for this block. Falling back to normalized p-code.[/yellow]"
+            )
+            line_count += 2
 
-        block_a_as_hunks = cut_text_hunks_with_context(
-            script_a_actionscript_lines, concerned_lines_in_as_source_a, context_length=5, merge=True
+            concerned_lines_in_normalized_block_a: set[int] = set()
+            concerned_lines_in_normalized_block_b: set[int] = set()
+
+            block_a_corpus_lines = [ln.render() for ln in block_side_a.lines] if block_side_a is not None else []
+            block_b_corpus_lines = [ln.render() for ln in block_side_b.lines] if block_side_b is not None else []
+
+            if block.is_paired():
+                for diff_span_a, diff_span_b in block.diff_spans:
+                    concerned_lines_in_normalized_block_a.update(range(diff_span_a[0], diff_span_a[1]))
+                    concerned_lines_in_normalized_block_b.update(range(diff_span_b[0], diff_span_b[1]))
+            else:
+                # For unmatched blocks with no mapped ActionScript source lines, simply display the whole p-code block.
+                # This branch is probably practically dead, even though, in theory, it could happen.
+                if block_side_a is not None:
+                    concerned_lines_in_normalized_block_a = set(range(0, len(block_side_a.lines)))
+
+                if block_side_b is not None:
+                    concerned_lines_in_normalized_block_b = set(range(0, len(block_side_b.lines)))
+
+            block_a_diff_lines = concerned_lines_in_normalized_block_a
+            block_b_diff_lines = concerned_lines_in_normalized_block_b
+            syntax_lexer = None
+
+        hunk_pairs = align_hunk_pairs(
+            cut_text_hunks_with_context(block_a_corpus_lines, block_a_diff_lines, context_length=5, merge=True),
+            cut_text_hunks_with_context(block_b_corpus_lines, block_b_diff_lines, context_length=5, merge=True),
         )
-        block_b_as_hunks = cut_text_hunks_with_context(
-            script_b_actionscript_lines, concerned_lines_in_as_source_b, context_length=5, merge=True
-        )
-        hunk_pairs = align_hunk_pairs(block_a_as_hunks, block_b_as_hunks)
 
         for block_a_hunk, block_b_hunk in hunk_pairs:
             diff_view = SplitDiffView.from_text_hunk_pair(
                 block_a_hunk,
                 block_b_hunk,
-                left_highlighted_lines=concerned_lines_in_as_source_a,
-                right_highlighted_lines=concerned_lines_in_as_source_b,
-                syntax_lexer=ActionScriptLexer(),
+                left_highlighted_lines=block_a_diff_lines,
+                right_highlighted_lines=block_b_diff_lines,
+                syntax_lexer=syntax_lexer,
                 word_wrap=True,
             )
 
