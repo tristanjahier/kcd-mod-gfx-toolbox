@@ -1246,7 +1246,7 @@ def test_cut_text_hunks_with_context_with_edge_selection():
         Push register2, "GetMoney"
     """)
 
-    hunks = cut_text_hunks_with_context(sample, [0], context_length=2, merge=True)
+    hunks = cut_text_hunks_with_context(sample, [0], context_length=2, merge=False)
 
     assert hunks == [
         [
@@ -1256,9 +1256,20 @@ def test_cut_text_hunks_with_context_with_edge_selection():
         ]
     ]
 
-    hunks = cut_text_hunks_with_context(sample, [4], context_length=2, merge=True)
+    hunks = cut_text_hunks_with_context(sample, [4], context_length=2, merge=False)
 
     assert hunks == [[(2, "Push -1"), (3, "SetMember"), (4, 'Push register2, "GetMoney"')]]
+
+    hunks = cut_text_hunks_with_context(sample, [3, 4], context_length=2, merge=False)
+
+    assert hunks == [
+        [
+            (1, "NewObject"),
+            (2, "Push -1"),
+            (3, "SetMember"),
+            (4, 'Push register2, "GetMoney"'),
+        ]
+    ]
 
 
 def test_cut_text_hunks_with_context_with_empty_selection():
@@ -1271,6 +1282,53 @@ def test_cut_text_hunks_with_context_with_empty_selection():
     """)
 
     assert cut_text_hunks_with_context(sample, []) == []
+
+
+def test_cut_text_hunks_with_context_with_exceeding_context():
+    sample = sample_text_lines("""
+        Push register1, "m_DisplayedData", 0.0, "Array"
+        NewObject
+        Push -1
+        SetMember
+        Push register2, "GetMoney"
+    """)
+
+    # Demanded context goes beyond the start of the sample text.
+    hunks = cut_text_hunks_with_context(sample, [1], context_length=2, merge=False)
+
+    assert hunks == [
+        [
+            (0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+            (1, "NewObject"),
+            (2, "Push -1"),
+            (3, "SetMember"),
+        ]
+    ]
+
+    # Demanded context goes beyond the end of the sample text.
+    hunks = cut_text_hunks_with_context(sample, [3], context_length=2, merge=False)
+
+    assert hunks == [
+        [
+            (1, "NewObject"),
+            (2, "Push -1"),
+            (3, "SetMember"),
+            (4, 'Push register2, "GetMoney"'),
+        ]
+    ]
+
+    # Demanded context goes beyond both sample text bounds.
+    hunks = cut_text_hunks_with_context(sample, [2], context_length=5, merge=False)
+
+    assert hunks == [
+        [
+            (0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+            (1, "NewObject"),
+            (2, "Push -1"),
+            (3, "SetMember"),
+            (4, 'Push register2, "GetMoney"'),
+        ]
+    ]
 
 
 def test_align_hunk_pairs():
