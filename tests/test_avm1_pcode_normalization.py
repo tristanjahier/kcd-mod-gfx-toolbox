@@ -310,7 +310,7 @@ def test_split_into_blocks_uses_fallback_name_for_unsafely_named_function():
     assert [block.name for block in blocks] == ["__anonymous"]
 
 
-def test_split_into_blocks_numbers_duplicate_block_names():
+def test_split_into_blocks_deduplicates_block_names():
     pcode_sample = sample_pcode("""
         Push register2
         Push "SameName"
@@ -337,6 +337,28 @@ def test_split_into_blocks_numbers_duplicate_block_names():
 
     assert [block.name for block in blocks] == ["SameName", "__toplevel", "SameName__2", "__toplevel__2"]
 
+def test_split_into_blocks_deduplicates_block_names_case_insensitive():
+    pcode_sample = sample_pcode("""
+        Push register2
+        Push "SameName"
+        DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {
+        Push 1
+        }
+        SetMember
+        If loc0e3c
+        Push "_global"
+        GetVariable
+        Push register2
+        Push "sameName"
+        DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {
+        Push 2
+        }
+        SetMember
+    """)
+
+    blocks = split_into_blocks(pcode_sample)
+
+    assert [block.name for block in blocks] == ["SameName", "__toplevel", "sameName__2"]
 
 def test_canonicalize_push_lines():
     pcode_sample = sample_pcode("""
