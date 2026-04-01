@@ -194,15 +194,15 @@ def test_split_into_blocks():
 
     # There must be exactly the same number of blocks, with the same names (and occurrences).
     fixture_block_files = list_data_files("pcode/blocks/StashManager_v1")
-    fixture_block_names = [re.sub(r"^\d+_(.*)", r"\1", p.stem) for p in fixture_block_files]
+    fixture_block_names = [p.stem for p in fixture_block_files]
     test_block_names = [block.name for block in blocks]
     assert Counter(fixture_block_names) == Counter(test_block_names), "Block names and count do not match exactly."
 
     # After we are sure that we have exactly the same set of block names, we compare their contents.
 
-    for idx, block in enumerate(blocks, start=1):
+    for block in blocks:
         # A bit dirty, should remove the number prefixing from normalized blocks.
-        block_file_name = f"{idx:03d}_{block.name}.pcode"
+        block_file_name = f"{block.name}.pcode"
         fixture_block_file = get_test_data_dir() / "pcode/blocks/StashManager_v1" / block_file_name
 
         if fixture_block_file.is_file():

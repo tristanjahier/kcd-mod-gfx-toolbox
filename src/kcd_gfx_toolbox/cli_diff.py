@@ -98,7 +98,7 @@ def read_cached_normalized_blocks(cache_dir: Path) -> NormalizationResult:
 
         total_blocks += 1
 
-        block_name = re.sub(r"^\d+_", "", block_file.stem)
+        block_name = block_file.stem
 
         if block_name.startswith("__toplevel"):
             toplevel_blocks += 1
@@ -465,10 +465,8 @@ def display_detailed_diff_in_actionscript(
         )
         line_count += 1
 
-        block_name_side_a = re.sub(r"^\d+_", "", block.side_a_name) if block.side_a_name else None
-        block_name_side_b = re.sub(r"^\d+_", "", block.side_b_name) if block.side_b_name else None
-        block_side_a = next((b for b in script_a_blocks if b.name == block_name_side_a), None)
-        block_side_b = next((b for b in script_b_blocks if b.name == block_name_side_b), None)
+        block_side_a = next((b for b in script_a_blocks if b.name == block.side_a_name), None)
+        block_side_b = next((b for b in script_b_blocks if b.name == block.side_b_name), None)
 
         # Mapped lines in ActionScript are sparse. Simple naive improvement: propagate mapped
         # lines to subsequent unmapped lines, within the boundaries of the block.
