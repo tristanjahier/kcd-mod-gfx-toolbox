@@ -17,7 +17,6 @@ from kcd_gfx_toolbox.avm1.pcode_normalization import (
 )
 from kcd_gfx_toolbox.avm1.pcode_parsing import parse_pcode_file
 from .helpers import sample_pcode, sample_text, sample_text_lines, list_data_files, read_data_file, get_test_data_dir
-import re
 from collections import Counter
 
 
