@@ -335,7 +335,7 @@ def test_split_into_blocks_deduplicates_block_names():
 
     blocks = split_into_blocks(pcode_sample)
 
-    assert [block.name for block in blocks] == ["SameName", "__toplevel", "SameName__2", "__toplevel__2"]
+    assert [block.name for block in blocks] == ["SameName", "__toplevel", "SameName_2", "__toplevel_2"]
 
 def test_split_into_blocks_deduplicates_block_names_case_insensitive():
     pcode_sample = sample_pcode("""
@@ -358,7 +358,7 @@ def test_split_into_blocks_deduplicates_block_names_case_insensitive():
 
     blocks = split_into_blocks(pcode_sample)
 
-    assert [block.name for block in blocks] == ["SameName", "__toplevel", "sameName__2"]
+    assert [block.name for block in blocks] == ["SameName", "__toplevel", "sameName_2"]
 
 def test_canonicalize_push_lines():
     pcode_sample = sample_pcode("""

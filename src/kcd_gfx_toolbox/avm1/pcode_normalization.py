@@ -109,7 +109,7 @@ def split_into_blocks(pcode_file: PcodeBlock) -> list[PcodeBlock]:
         occurrences = name_occurrences.get(name.lower(), 0)
         name_occurrences[name.lower()] = occurrences + 1
         if occurrences > 0:
-            name = f"{name}__{occurrences + 1}"
+            name = f"{name}_{occurrences + 1}"
         blocks.append(PcodeBlock(lines=pcode_file.lines[a:b], name=name))
 
     i = 0
