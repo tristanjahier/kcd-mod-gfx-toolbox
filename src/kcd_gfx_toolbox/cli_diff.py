@@ -437,6 +437,7 @@ def display_detailed_diff_in_actionscript(
                     characters="-",
                 )
             )
+            console.line()
             return
 
         script_a_actionscript_lines = _read_actionscript_source_lines(
@@ -604,6 +605,40 @@ def display_detailed_diff_in_actionscript(
             line_count += diff_view.get_last_render_height() + 2
 
         context_first_block_diff_display = False
+
+
+def display_summary(diffset: GfxDiffSet, sort_order: DiffSortOrder):
+    console.print(
+        f"Summary: "
+        f"[yellow]{len(diffset.get_scripts_with_differing_blocks())} scripts modified[/yellow], "
+        f"[red]{len(diffset.unmatched_a_scripts)} scripts deleted[/red], "
+        f"[green]{len(diffset.unmatched_b_scripts)} scripts created[/green]"
+    )
+
+    changed_count = diffset.get_modified_block_count()
+    deleted_count = diffset.get_unmatched_block_side_a_count()
+    created_count = diffset.get_unmatched_block_side_b_count()
+    changed_lines_total = diffset.get_modified_block_line_count()
+
+    console.print(
+        f"➥  Within modified scripts: "
+        f"[yellow]{changed_count} blocks modified[/yellow], "
+        f"[red]{deleted_count} blocks deleted[/red], "
+        f"[green]{created_count} blocks created[/green] "
+        f"({changed_lines_total} changed lines)\n"
+    )
+
+    diff_table = Table(box=box.SIMPLE, show_edge=False, pad_edge=False, header_style=None)
+    diff_table.add_column("Script block relative path")
+    diff_table.add_column("State")
+    diff_table.add_column("Lines changed (baseline)", justify="right")
+    diff_table.add_column("(+ label/register alignment)", justify="right")
+
+    diff_table.add_section()
+
+    unfold_diff_tree_in_table(diffset.to_tree(), diff_table, sort_order=sort_order)
+
+    console.print(diff_table)
 
 
 def command(
@@ -779,41 +814,7 @@ def command(
         )
         return
 
-    console.print(
-        f"Summary: "
-        f"[yellow]{len(diffset.get_scripts_with_differing_blocks())} scripts modified[/yellow], "
-        f"[red]{len(diffset.unmatched_a_scripts)} scripts deleted[/red], "
-        f"[green]{len(diffset.unmatched_b_scripts)} scripts created[/green]"
-    )
-
-    changed_count = diffset.get_modified_block_count()
-    deleted_count = diffset.get_unmatched_block_side_a_count()
-    created_count = diffset.get_unmatched_block_side_b_count()
-    changed_lines_total = diffset.get_modified_block_line_count()
-
-    console.print(
-        f"➥  Within modified scripts: "
-        f"[yellow]{changed_count} blocks modified[/yellow], "
-        f"[red]{deleted_count} blocks deleted[/red], "
-        f"[green]{created_count} blocks created[/green] "
-        f"({changed_lines_total} changed lines)\n"
-    )
-
-    diff_table = Table(box=box.SIMPLE, show_edge=False, pad_edge=False, header_style=None)
-    diff_table.add_column("Script block relative path")
-    diff_table.add_column("State")
-    diff_table.add_column("Lines changed (baseline)", justify="right")
-    diff_table.add_column("(+ label/register alignment)", justify="right")
-
-    diff_table.add_section()
-
-    unfold_diff_tree_in_table(diffset.to_tree(), diff_table, sort_order=sort_order)
-
-    console.print(diff_table)
-
     if not show_summary_only:
-        console.line()
-
         if detailed_diff_format == "as":
             display_detailed_diff_in_actionscript(
                 workspace_a,
@@ -826,3 +827,6 @@ def command(
             )
         elif detailed_diff_format == "pcode":
             display_detailed_diff_in_pcode(diffset, sort_order=sort_order, max_lines=truncate_detailed_diff)
+
+    console.line()
+    display_summary(diffset, sort_order)
