@@ -627,8 +627,8 @@ def command(
             help="Enable to reuse cached normalized blocks. Disable to force re-normalization.",
         ),
     ] = False,
-    show_detailed_diff: Annotated[
-        bool, typer.Option("--detailed", help="Show line-by-line differences for each modified script block.")
+    show_summary_only: Annotated[
+        bool, typer.Option("--summary-only", help="Only show a summary, not detailed file differences.")
     ] = False,
     detailed_diff_format: Annotated[
         Literal["as", "pcode"], typer.Option("--details-format", help="Set the format for detailed diff.")
@@ -811,7 +811,7 @@ def command(
 
     console.print(diff_table)
 
-    if show_detailed_diff:
+    if not show_summary_only:
         console.line()
 
         if detailed_diff_format == "as":
