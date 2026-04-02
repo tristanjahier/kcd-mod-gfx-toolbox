@@ -145,6 +145,24 @@ class Workspace:
 
         return file
 
+    def list_normalized_block_files(self, script_path: Path | str) -> set[Path]:
+        """List the normalized block files for an internal GFx script path."""
+        directory = self.normalization_path(script_path)
+
+        if not directory.is_dir():
+            raise FileNotFoundError(f"Normalized script block order file not found in workspace at '{directory}'.")
+
+        return list_tree_files(directory, "*.pcode")
+
+    def find_block_order_file(self, script_path: Path | str) -> Path:
+        """Return the path to a normalized block order file for an internal GFx script path."""
+        file = self.normalization_path(Path(script_path) / "order.txt")
+
+        if not file.exists():
+            raise FileNotFoundError(f"Normalized script block order file not found in workspace at '{file}'.")
+
+        return file
+
     @classmethod
     def create_as_temporary_directory(cls, source_file: Path):
         """Create a workspace in a temporary directory, inferred from the source file's identity."""

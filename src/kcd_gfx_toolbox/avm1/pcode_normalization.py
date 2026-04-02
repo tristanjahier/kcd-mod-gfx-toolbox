@@ -660,6 +660,7 @@ def normalize_file(input_file: Path, output_dir: Path, write_source_maps: bool =
     output_dir.mkdir(parents=True, exist_ok=True)
 
     named_count = anon_count = gap_count = 0
+    block_order: list[str] = []
 
     for block in blocks:
         assert block.name is not None
@@ -671,12 +672,16 @@ def normalize_file(input_file: Path, output_dir: Path, write_source_maps: bool =
             block_sourcemap_file = output_dir / f"{block.name}.pcode.map"
             block_sourcemap_file.write_text(json.dumps(block_sourcemap) + "\n", encoding="utf-8")
 
+        block_order.append(block.name)
+
         if block.name.startswith("__toplevel"):
             gap_count += 1
         elif block.name.startswith("__anonymous"):
             anon_count += 1
         else:
             named_count += 1
+
+    (output_dir / "order.txt").write_text("\n".join(block_order), encoding="utf-8")
 
     return NormalizationResult(
         blocks=blocks,

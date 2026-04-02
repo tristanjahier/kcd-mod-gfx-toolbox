@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from __future__ import annotations
+from enum import StrEnum
 import json
 from typing import Annotated, Literal, cast
 import typer
@@ -34,7 +35,6 @@ from .file_diff import (
 from .utils import (
     console,
     ensure_empty_dir,
-    list_tree_files,
     print_error,
     print_warning,
     read_file_lines,
@@ -49,6 +49,12 @@ from rich.rule import Rule
 from rich.markup import escape
 from pygments.lexer import Lexer
 from pygments.lexers import ActionScriptLexer
+
+
+class DiffSortOrder(StrEnum):
+    NATURAL = "natural"
+    CHANGES_DESC = "changes_desc"
+    CHANGES_ASC = "changes_asc"
 
 
 def extract_gfx_file(ffdec_path: Path, gfx_file: Path, workspace: Workspace, read_cache: bool):
@@ -82,21 +88,21 @@ def extract_gfx_file(ffdec_path: Path, gfx_file: Path, workspace: Workspace, rea
         raise typer.Exit(code=1)
 
 
-def read_cached_normalized_blocks(cache_dir: Path) -> NormalizationResult:
+def read_cached_normalized_script_blocks(workspace: Workspace, script_path: Path) -> NormalizationResult:
     """
     Compute normalization stats from an existing normalized-blocks directory.
     """
+    cache_dir = workspace.normalization_path(script_path)
+
     if not cache_dir.is_dir():
         raise FileNotFoundError(f"Missing normalization cache directory: {cache_dir}.")
 
     pcode_blocks: list[PcodeBlock] = []
     total_blocks = named_blocks = anonymous_blocks = toplevel_blocks = 0
 
-    for block_file in sorted(list_tree_files(cache_dir, glob="*.pcode")):
-        block_file = (cache_dir / block_file).resolve()
-
+    for block_file in workspace.list_normalized_block_files(script_path):
+        block_file = cache_dir / block_file
         total_blocks += 1
-
         block_name = block_file.stem
 
         if block_name.startswith("__toplevel"):
@@ -116,6 +122,14 @@ def read_cached_normalized_blocks(cache_dir: Path) -> NormalizationResult:
 
     if total_blocks == 0:
         raise FileNotFoundError(f"Normalization cache directory is empty: {cache_dir}.")
+
+    block_list = workspace.find_block_order_file(script_path).read_text(encoding="utf-8").splitlines()
+    block_order_dict = {name: i for i, name in enumerate(block_list) if name.strip()}
+
+    if {b.name for b in pcode_blocks} != set(block_order_dict.keys()):
+        raise FileNotFoundError(f"Normalization cache directory is corrupted: {cache_dir}.")
+
+    pcode_blocks.sort(key=lambda b: block_order_dict[b.name])
 
     return NormalizationResult(
         blocks=pcode_blocks,
@@ -143,7 +157,7 @@ def normalize_scripts(
 
         if read_cache:
             try:
-                norm_stats = read_cached_normalized_blocks(normalized_script_dir)
+                norm_stats = read_cached_normalized_script_blocks(workspace, script_path)
             except FileNotFoundError:
                 print_warning(f"Normalization cache missing: {escape(str(normalized_script_dir))}.")  # Not fatal
 
@@ -183,7 +197,7 @@ def normalize_scripts(
     return normalized_script_blocks
 
 
-def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table):
+def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table, sort_order: DiffSortOrder):
     """
     Append script paths and blocks as a tree to a Rich table.
     Script paths are sorted in alphabetical order.
@@ -198,7 +212,16 @@ def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table):
             return str(script.side_a_path or script.side_b_path)
         elif n.type == GfxDiffTreeNodeType.SCRIPT_BLOCK:
             block = cast(GfxScriptBlock, n.value)
-            return (-block.refined_changed, str(block.side_a_name or block.side_b_name))
+            block_name_key = (
+                f"{block.side_a_name} {block.side_b_name}"
+                if block.is_paired()
+                else str(block.side_a_name or block.side_b_name)
+            )
+            if sort_order == DiffSortOrder.NATURAL:
+                return (block.position, block_name_key)
+            elif sort_order == DiffSortOrder.CHANGES_ASC:
+                return (block.refined_changed, block_name_key)
+            return (-block.refined_changed, block_name_key)
         assert False, "must never reach this code."
 
     def _render_node(node: GfxDiffTreeNode, line_prefix: str = "", depth: int = 0, is_last_child: bool = False):
@@ -284,9 +307,7 @@ def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table):
         _render_node(child, is_last_child=is_last)
 
 
-def display_detailed_diff_in_pcode(
-    diffset: GfxDiffSet, sort_order: Literal["default", "changes_desc", "changes_asc"] = "default", max_lines: int = 0
-):
+def display_detailed_diff_in_pcode(diffset: GfxDiffSet, sort_order: DiffSortOrder, max_lines: int = 0):
     """
     Display line-by-line differences for each modified script block.
     """
@@ -299,16 +320,16 @@ def display_detailed_diff_in_pcode(
     for script in scripts:
         blocks = sorted(
             diffset.paired_scripts_block_diffs[script].paired_blocks,
-            key=lambda b: (-b.refined_changed, b.side_a_name, b.side_b_name),
+            key=lambda b: (b.position, b.side_a_name, b.side_b_name),
         )
 
         for block in blocks:
             if block.is_paired() and block.unified_diff:
                 sorted_pairs.append((script, block))
 
-    if sort_order == "changes_asc":
+    if sort_order == DiffSortOrder.CHANGES_ASC:
         sorted_pairs.sort(key=lambda p: (p[1].refined_changed, p[1].side_a_name, p[1].side_b_name))
-    elif sort_order == "changes_desc":
+    elif sort_order == DiffSortOrder.CHANGES_DESC:
         sorted_pairs.sort(key=lambda p: (-p[1].refined_changed, p[1].side_a_name, p[1].side_b_name))
 
     for script, block in sorted_pairs:
@@ -349,7 +370,7 @@ def display_detailed_diff_in_actionscript(
     workspace_b: Workspace,
     normalized_script_blocks_b: dict[Path, list[PcodeBlock]],
     diffset: GfxDiffSet,
-    sort_order: Literal["default", "changes_desc", "changes_asc"] = "default",
+    sort_order: DiffSortOrder,
     max_lines: int = 0,
 ):
     line_count = 0
@@ -361,15 +382,15 @@ def display_detailed_diff_in_actionscript(
     for script in scripts:
         blocks = sorted(
             diffset.paired_scripts_block_diffs[script].get_differing_blocks(),
-            key=lambda b: (-b.refined_changed, b.side_a_name or b.side_b_name),
+            key=lambda b: (b.position, b.side_a_name or b.side_b_name),
         )
 
         for block in blocks:
             sorted_pairs.append((script, block))
 
-    if sort_order == "changes_asc":
+    if sort_order == DiffSortOrder.CHANGES_ASC:
         sorted_pairs.sort(key=lambda p: (p[1].refined_changed, p[1].side_a_name or p[1].side_b_name))
-    elif sort_order == "changes_desc":
+    elif sort_order == DiffSortOrder.CHANGES_DESC:
         sorted_pairs.sort(key=lambda p: (-p[1].refined_changed, p[1].side_a_name or p[1].side_b_name))
 
     # Cache for ActionScript sources.
@@ -620,13 +641,13 @@ def command(
             help="Truncate display of diff details after N lines. 0 = unlimited.",
         ),
     ] = 512,
-    sort_detailed_diff: Annotated[
-        Literal["default", "changes_desc", "changes_asc"],
+    sort_order: Annotated[
+        DiffSortOrder,
         typer.Option(
-            "--details-sort",
-            help="Control sort order for detailed diffs. 'changes_desc' shows most modified blocks first, 'changes_asc' does the opposite. 'default' groups by script (sorted alphabetically), then orders blocks by most modified first.",
+            "--sort",
+            help="Control sort order for diffs. 'natural' preserves the original order of blocks within each script. 'changes_desc' shows most modified blocks first, 'changes_asc' does the opposite.",
         ),
-    ] = "default",
+    ] = DiffSortOrder.CHANGES_DESC,
 ):
     """
     Compare scripts between two GFx files to surface meaningful changes through normalization.
@@ -735,6 +756,20 @@ def command(
         workspace_b.normalization_dir(),
     )
 
+    # Reassign original positions to script block diffs.
+    for script in diffset.get_differing_scripts():
+        if not script.is_paired():
+            continue
+
+        block_order_a = {b.name: i for i, b in enumerate(normalized_script_blocks_a[script.side_a_path])}
+        block_order_b = {b.name: i for i, b in enumerate(normalized_script_blocks_b[script.side_b_path])}
+
+        for block in diffset.paired_scripts_block_diffs[script].get_blocks():
+            if block.side_a_name is not None:  # side A has priority
+                block.position = block_order_a[block.side_a_name]
+            elif block.side_b_name is not None:
+                block.position = block_order_b[block.side_b_name]
+
     # Refine the final difference score on block-level using more noise-reduction tweaks.
     refine_block_diffs(diffset, workspace_a.normalization_dir(), workspace_b.normalization_dir())
 
@@ -772,7 +807,7 @@ def command(
 
     diff_table.add_section()
 
-    unfold_diff_tree_in_table(diffset.to_tree(), diff_table)
+    unfold_diff_tree_in_table(diffset.to_tree(), diff_table, sort_order=sort_order)
 
     console.print(diff_table)
 
@@ -786,8 +821,8 @@ def command(
                 workspace_b,
                 normalized_script_blocks_b,
                 diffset,
-                sort_order=sort_detailed_diff,
+                sort_order=sort_order,
                 max_lines=truncate_detailed_diff,
             )
         elif detailed_diff_format == "pcode":
-            display_detailed_diff_in_pcode(diffset, sort_order=sort_detailed_diff, max_lines=truncate_detailed_diff)
+            display_detailed_diff_in_pcode(diffset, sort_order=sort_order, max_lines=truncate_detailed_diff)

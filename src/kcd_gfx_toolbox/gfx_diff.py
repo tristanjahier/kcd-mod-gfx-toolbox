@@ -124,6 +124,7 @@ class GfxScriptBlock:
     One diff entry for a script block.
     """
 
+    position: int | None = field(default=None, compare=False)
     side_a_name: str | None = field(default=None, hash=True)
     side_b_name: str | None = field(default=None, hash=True)
     changed: int = field(default=0, compare=False)
@@ -160,6 +161,9 @@ class ScriptDiffSet:
             or bool(self.unmatched_a_blocks)
             or bool(self.unmatched_b_blocks)
         )
+
+    def get_blocks(self) -> set[GfxScriptBlock]:
+        return self.paired_blocks | self.unmatched_a_blocks | self.unmatched_b_blocks
 
     def get_differing_blocks(self) -> set[GfxScriptBlock]:
         return (
