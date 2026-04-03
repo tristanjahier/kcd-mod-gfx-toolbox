@@ -6,7 +6,7 @@ import json
 from typing import Annotated, Literal, cast
 import typer
 
-from .workspace import Workspace
+from .workspace import Workspace, temp_workspace_name_for_file
 from .avm1.pcode_parsing import PcodeBlock, PcodeLine, merge_pcode_lines_sources, parse_pcode_file
 from .swd import (
     build_pcode_to_actionscript_line_map,
@@ -658,6 +658,13 @@ def command(
         Path | None,
         typer.Option("--ffdec", help="Path to the ffdec binary. Only required if it is not in the system PATH."),
     ] = None,
+    workspace_root_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--workspace-root",
+            help="Directory where intermediate files will be written. If omitted, a temporary directory is used.",
+        ),
+    ] = None,
     use_extraction_cache: Annotated[
         bool,
         typer.Option(
@@ -708,8 +715,18 @@ def command(
         print_error(f"Invalid input: {escape(str(file_b))} is not a file.")
         raise typer.Exit(code=1)
 
-    workspace_a = Workspace.create_as_temporary_directory(file_a)
-    workspace_b = Workspace.create_as_temporary_directory(file_b)
+    if workspace_root_dir is not None:
+        workspace_root_dir = workspace_root_dir.resolve()
+
+        if not workspace_root_dir.is_dir():
+            print_error(f"Invalid input: {escape(str(workspace_root_dir))} does not exist or is not a directory.")
+            raise typer.Exit(code=1)
+
+        workspace_a = Workspace(workspace_root_dir / temp_workspace_name_for_file(file_a))
+        workspace_b = Workspace(workspace_root_dir / temp_workspace_name_for_file(file_b))
+    else:
+        workspace_a = Workspace.create_as_temporary_directory(file_a)
+        workspace_b = Workspace.create_as_temporary_directory(file_b)
 
     try:
         ffdec_path = resolve_ffdec(ffdec_path)

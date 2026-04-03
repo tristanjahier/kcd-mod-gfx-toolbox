@@ -7,7 +7,7 @@ def temp_workspace_name_for_file(path: Path) -> str:
     """Generate a stable file key used to automatically name a temporary workspace."""
     st = path.stat()
     sig = f"{path.resolve()}|{st.st_mtime_ns}|{st.st_size}"
-    return sha256_str(sig)
+    return path.stem + "_" + sha256_str(sig)
 
 
 class Workspace:
@@ -166,6 +166,4 @@ class Workspace:
     @classmethod
     def create_as_temporary_directory(cls, source_file: Path):
         """Create a workspace in a temporary directory, inferred from the source file's identity."""
-        file_path_hash = temp_workspace_name_for_file(source_file)
-        workspace_dir = (get_temp_dir() / f"{source_file.stem}_{file_path_hash}").resolve()
-        return cls(workspace_dir)
+        return cls((get_temp_dir() / temp_workspace_name_for_file(source_file)).resolve())
