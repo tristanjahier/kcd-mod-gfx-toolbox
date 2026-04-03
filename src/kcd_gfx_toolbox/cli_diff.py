@@ -57,6 +57,31 @@ class DiffSortOrder(StrEnum):
     CHANGES_ASC = "changes_asc"
 
 
+def format_script_path(path: Path | str, path_rename: Path | str | None = None) -> str:
+    """Format a GFx script path for display, optionally showing a rename."""
+    path = Path(path)
+
+    if path.parent != Path("."):
+        text = f"{path.parent.as_posix()}/[bright_cyan]{path.name}[/bright_cyan]"
+    else:
+        text = f"[bright_cyan]{path.name}[/bright_cyan]"
+
+    if path_rename is not None and path != Path(path_rename):
+        text += " [bright_white]→[/bright_white] " + format_script_path(path_rename)
+
+    return text
+
+
+def format_script_block_name(name: str, rename: str | None = None) -> str:
+    """Format a script block name for display, optionally showing a rename."""
+    text = "[bright_yellow]❖[/bright_yellow] " + name
+
+    if rename is not None and name != rename:
+        text += " [bright_yellow]→[/bright_yellow] " + rename
+
+    return text
+
+
 def extract_gfx_file(ffdec_path: Path, gfx_file: Path, workspace: Workspace, read_cache: bool):
     extraction_dir = workspace.extraction_dir()
     console.print(
@@ -185,7 +210,7 @@ def normalize_scripts(
 
     for rel_path, stats in results:
         result_table.add_row(
-            rel_path.as_posix(),
+            format_script_path(rel_path),
             f"{stats.total_blocks} blocks",
             f"{stats.named_blocks} named",
             f"{stats.anonymous_blocks} anonymous",
@@ -242,29 +267,25 @@ def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table, sort_order: D
         elif node.type == GfxDiffTreeNodeType.SCRIPT:
             script = cast(GfxScript, node.value)
             if script.is_paired():
+                node_text = format_script_path(script.side_a_path.name, script.side_b_path.name)
                 if script.was_renamed():
-                    node_text = f"{script.side_a_path.name} [white]→[/white] {script.side_b_path.name}"
                     node_state = "[yellow]modified[/yellow], [bright_blue]renamed[/bright_blue]"
                 else:
-                    node_text = script.side_a_path.name
                     node_state = "[yellow]modified[/yellow]"
             elif script.side_b_path is None:  # unmatched from side A
-                node_text = script.side_a_path.name
+                node_text = format_script_path(script.side_a_path.name)
                 node_state = "[red]deleted[/red]"
             else:  # unmatched from side B
-                node_text = script.side_b_path.name
+                node_text = format_script_path(script.side_b_path.name)
                 node_state = "[green]new[/green]"
-
-            node_text = f"[bold cyan]{node_text}[/bold cyan]"
 
         elif node.type == GfxDiffTreeNodeType.SCRIPT_BLOCK:
             block = cast(GfxScriptBlock, node.value)
+            node_text = format_script_block_name(block.side_a_name or block.side_b_name, block.side_b_name)
             if block.is_paired():
                 if block.was_renamed():
-                    node_text = f"{block.side_a_name} [bright_yellow]→[/bright_yellow] {block.side_b_name}"
                     node_state = "[yellow]modified[/yellow], [bright_blue]renamed[/bright_blue]"
                 else:
-                    node_text = block.side_a_name
                     node_state = "[yellow]modified[/yellow]"
 
                 refine_ratio = block.refined_changed / block.changed
@@ -279,15 +300,11 @@ def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table, sort_order: D
 
                 node_change_values = (str(block.changed), refined_text)
             elif block.side_b_name is None:  # unmatched from side A
-                node_text = block.side_a_name
                 node_state = "[red]deleted[/red]"
                 node_change_values = ("-", "-")
             else:  # unmatched from side B
-                node_text = block.side_b_name
                 node_state = "[green]new[/green]"
                 node_change_values = ("-", "-")
-
-            node_text = f"[bright_yellow]❖[/bright_yellow] {node_text}"
 
         table.add_row(f"{line_prefix}{connector}{node_text}", f"[italic]{node_state}[/italic]", *node_change_values)
 
@@ -467,15 +484,8 @@ def display_detailed_diff_in_actionscript(
             console.line()
             line_count += 1
 
-        if script.was_renamed():
-            script_title = f"[bold cyan]{script.side_a_path.as_posix()} [white]→[/white] {script.side_b_path.as_posix()}[/bold cyan]"
-        else:
-            script_title = f"[bold cyan]{script.side_a_path.as_posix()}[/bold cyan]"
-
-        if block.was_renamed():
-            block_title = f"[bright_yellow]❖[/bright_yellow] {block.side_a_name} [bright_yellow]→[/bright_yellow] {block.side_b_name}"
-        else:
-            block_title = f"[bright_yellow]❖[/bright_yellow] {block.side_a_name or block.side_b_name}"
+        script_title = format_script_path(script.side_a_path, script.side_b_path)
+        block_title = format_script_block_name(block.side_a_name or block.side_b_name, block.side_b_name)
 
         console.print(
             Rule(
@@ -744,19 +754,19 @@ def command(
     if unmatched_a_scripts:
         console.print(f"Scripts only present in {escape(str(file_a))}:")
         for path in sorted(unmatched_a_scripts):
-            console.print(path.as_posix())
+            console.print(format_script_path(path))
         console.print()
 
     if unmatched_b_scripts:
         console.print(f"Scripts only present in {escape(str(file_b))}:")
         for path in sorted(unmatched_b_scripts):
-            console.print(path.as_posix())
+            console.print(format_script_path(path))
         console.print()
 
     if common_path_scripts:
         console.print("Common scripts that differ:")
         for path in sorted(common_path_scripts):
-            console.print(path.as_posix())
+            console.print(format_script_path(path))
 
     # ================================================================
     # Step 3: normalize the differing scripts (common and unmatched), to remove the noise in p-codes due to
