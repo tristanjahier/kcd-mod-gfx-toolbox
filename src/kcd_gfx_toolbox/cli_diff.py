@@ -665,9 +665,9 @@ def command(
     show_summary_only: Annotated[
         bool, typer.Option("--summary-only", help="Only show a summary, not detailed file differences.")
     ] = False,
-    detailed_diff_format: Annotated[
-        Literal["as", "pcode"], typer.Option("--details-format", help="Set the format for detailed diff.")
-    ] = "as",
+    diff_format: Annotated[
+        Literal["actionscript", "pcode"], typer.Option("--format", help="Set the format for detailed diff.")
+    ] = "actionscript",
     truncate_detailed_diff: Annotated[
         int,
         typer.Option(
@@ -815,7 +815,7 @@ def command(
         return
 
     if not show_summary_only:
-        if detailed_diff_format == "as":
+        if diff_format == "actionscript":
             display_detailed_diff_in_actionscript(
                 workspace_a,
                 normalized_script_blocks_a,
@@ -825,7 +825,7 @@ def command(
                 sort_order=sort_order,
                 max_lines=truncate_detailed_diff,
             )
-        elif detailed_diff_format == "pcode":
+        elif diff_format == "pcode":
             display_detailed_diff_in_pcode(diffset, sort_order=sort_order, max_lines=truncate_detailed_diff)
 
     console.line()
