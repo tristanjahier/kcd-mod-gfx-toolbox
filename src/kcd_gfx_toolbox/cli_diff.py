@@ -151,9 +151,6 @@ def read_cached_normalized_script_blocks(workspace: Workspace, script_path: Path
     block_list = workspace.find_block_order_file(script_path).read_text(encoding="utf-8").splitlines()
     block_order_dict = {name: i for i, name in enumerate(block_list) if name.strip()}
 
-    if {b.name for b in pcode_blocks} != set(block_order_dict.keys()):
-        raise FileNotFoundError(f"Normalization cache directory is corrupted: {cache_dir}.")
-
     pcode_blocks.sort(key=lambda b: block_order_dict[b.name])
 
     return NormalizationResult(
@@ -174,6 +171,12 @@ def normalize_scripts(
     results: list[tuple[Path, NormalizationResult]] = []
     normalized_script_blocks: dict[Path, list[PcodeBlock]] = {}
     read_cache = read_cache and workspace.normalization_dir_has_content()
+
+    if read_cache and not workspace.normalization_dir_has_valid_contents():
+        print_warning(
+            "Normalization directory is not empty, but it appears partial, corrupted, or unrelated. Overwriting."
+        )
+        read_cache = False
 
     for script_path in scripts:
         raw_script_path = workspace.find_raw_pcode_file(script_path)

@@ -127,6 +127,62 @@ class Workspace:
 
         return directory.is_dir() and any(directory.iterdir())
 
+    def script_normalization_dir_has_valid_contents(self, directory: Path) -> bool:
+        """
+        Check whether a script normalization directory contains valid normalized p-code blocks.
+
+        Verifies the presence of expected files: source maps, order.txt.
+        Does not validate file integrity because it is intended as a fast, cheap check for cached data.
+        """
+        block_order_file = directory / "order.txt"
+
+        if not block_order_file.is_file():
+            return False
+
+        try:
+            block_list = block_order_file.read_text(encoding="utf-8").splitlines()
+        except (FileNotFoundError, UnicodeDecodeError):
+            return False
+
+        block_names = {name for name in block_list if name.strip()}
+
+        if not block_names:
+            return False
+
+        pcode_files = list_tree_files(directory, glob="*.pcode")
+
+        if {f.stem for f in pcode_files} != block_names:
+            return False
+
+        sourcemap_files = list_tree_files(directory, glob="*.pcode.map")
+
+        if {f.name for f in pcode_files} != {f.with_suffix("").name for f in sourcemap_files}:
+            return False
+
+        return True
+
+    def normalization_dir_has_valid_contents(self) -> bool:
+        """
+        Check whether the normalization directory contains files that look like valid normalized p-code scripts.
+        """
+        directory = self.normalization_dir()
+
+        if not directory.is_dir():
+            return False
+
+        empty = True
+
+        for p in directory.rglob("*"):
+            if not p.is_dir() or any(c.is_dir() for c in p.iterdir()):
+                continue
+
+            empty = False
+
+            if not self.script_normalization_dir_has_valid_contents(p):
+                return False
+
+        return not empty
+
     def find_raw_pcode_file(self, script_path: Path | str) -> Path:
         """Return the path to a raw p-code file for an internal GFx script path."""
         file = self.extraction_path(Path("scripts") / script_path).with_suffix(".pcode")
