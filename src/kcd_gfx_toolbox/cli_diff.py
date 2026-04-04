@@ -39,7 +39,7 @@ from .utils import (
     print_warning,
     read_file_lines,
 )
-from .split_diff_view import SplitDiffView
+from .split_diff_view import SplitDiffView, SplitDiffViewMessagePane
 from pathlib import Path
 import shutil
 import subprocess
@@ -606,7 +606,21 @@ def display_detailed_diff_in_actionscript(
         )
 
         for block_a_hunk, block_b_hunk in hunk_pairs:
-            diff_view = SplitDiffView.from_text_hunk_pair(
+            if not block.is_paired():
+                if block.side_a_name is None:
+                    block_a_hunk = SplitDiffViewMessagePane("[dim]This block does not exist on side A.[/dim]")
+                else:
+                    block_b_hunk = SplitDiffViewMessagePane("[dim]This block does not exist on side B.[/dim]")
+            elif not block_a_diff_lines:
+                block_a_hunk = SplitDiffViewMessagePane(
+                    "[yellow]Unable to map pcode lines to ActionScript source on this side.[/yellow]"
+                )
+            elif not block_b_diff_lines:
+                block_b_hunk = SplitDiffViewMessagePane(
+                    "[yellow]Unable to map pcode lines to ActionScript source on this side.[/yellow]"
+                )
+
+            diff_view = SplitDiffView.from_pair(
                 block_a_hunk,
                 block_b_hunk,
                 left_highlighted_lines=block_a_diff_lines,

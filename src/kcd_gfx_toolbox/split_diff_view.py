@@ -1,4 +1,5 @@
 from __future__ import annotations
+from abc import ABC, abstractmethod
 from math import ceil, floor
 from typing import Self
 from rich.console import Console, ConsoleOptions, RenderResult, RenderableType
@@ -43,6 +44,14 @@ def _highlight_line(line: str, lexer: Lexer, pygments_style: type[PygmentsStyle]
     return rich_text
 
 
+class SplitDiffViewPane(ABC):
+    @abstractmethod
+    def compute_height(self, console: Console, pane_width: int) -> int: ...
+
+    @abstractmethod
+    def render(self, vertical_gap: int | None = None) -> RenderableType: ...
+
+
 class SplitDiffView:
     def __init__(self, left_pane: SplitDiffViewPane, right_pane: SplitDiffViewPane, spacing: int = 1):
         self.left_pane = left_pane
@@ -84,21 +93,32 @@ class SplitDiffView:
         yield grid
 
     @classmethod
-    def from_text_hunk_pair(
+    def from_pair(
         cls,
-        left_text_hunk: TextHunk,
-        right_text_hunk: TextHunk,
+        left: TextHunk | SplitDiffViewMessagePane,
+        right: TextHunk | SplitDiffViewMessagePane,
         left_highlighted_lines: set[int] | None = None,
         right_highlighted_lines: set[int] | None = None,
         **kwargs,
     ) -> Self:
-        return cls(
-            SplitDiffViewPane(left_text_hunk, highlighted_lines=left_highlighted_lines, **kwargs),
-            SplitDiffViewPane(right_text_hunk, highlighted_lines=right_highlighted_lines, **kwargs),
-        )
+        if not isinstance(left, SplitDiffViewMessagePane):
+            left_pane = SplitDiffViewCodePane(left, highlighted_lines=left_highlighted_lines, **kwargs)
+        elif left_highlighted_lines:
+            raise ValueError("Cannot highlight lines in a message pane.")
+        else:
+            left_pane = left
+
+        if not isinstance(right, SplitDiffViewMessagePane):
+            right_pane = SplitDiffViewCodePane(right, highlighted_lines=right_highlighted_lines, **kwargs)
+        elif right_highlighted_lines:
+            raise ValueError("Cannot highlight lines in a message pane.")
+        else:
+            right_pane = right
+
+        return cls(left_pane, right_pane)
 
 
-class SplitDiffViewPane:
+class SplitDiffViewCodePane(SplitDiffViewPane):
     def __init__(
         self,
         text_hunk: TextHunk,
@@ -173,6 +193,43 @@ class SplitDiffViewPane:
         if vertical_gap is not None:
             for _ in range(max(0, vertical_gap)):
                 grid.add_row("", "")
+
+        return Padding(grid, pad=self.padding, style=bg_style)
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        yield self.render()
+
+
+class SplitDiffViewMessagePane(SplitDiffViewPane):
+    def __init__(self, message: str, background_color: str | None = "#17171a", padding: PaddingDimensions = (1, 2)):
+        self.message = message
+        self.background_color = background_color
+        self.padding = padding
+
+    def compute_height(self, console: Console, pane_width: int) -> int:
+        """Compute the component height for a given width."""
+        top_padding, right_padding, bottom_padding, left_padding = Padding.unpack(self.padding)
+
+        # Approximate the width available for the text.
+        text_width = max(1, pane_width - left_padding - right_padding)
+        content_height = max(1, len(Text.from_markup(self.message).wrap(console, text_width, overflow="fold")))
+
+        return content_height + top_padding + bottom_padding
+
+    def render(self, vertical_gap: int | None = None) -> RenderableType:
+        grid = Table.grid(expand=True)
+        grid.add_column("message", justify="center", overflow="fold")
+
+        gap = max(0, vertical_gap or 0) / 2
+        before_gap = floor(gap)
+        after_gap = ceil(gap)
+        for _ in range(before_gap):
+            grid.add_row("")
+        grid.add_row(self.message)
+        for _ in range(after_gap):
+            grid.add_row("")
+
+        bg_style = f"on {self.background_color}" if self.background_color is not None else ""
 
         return Padding(grid, pad=self.padding, style=bg_style)
 
