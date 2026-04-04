@@ -642,6 +642,62 @@ def canonicalize_constant_pool(lines: list[PcodeLine]) -> list[PcodeLine]:
     return canonicalized_lines
 
 
+def canonicalize_string_concatenation(lines: list[PcodeLine]) -> list[PcodeLine]:
+    """
+    Canonicalize string concatenation patterns.
+    Example:
+        Push "FSCommand:"
+        Push "OnFastTravelPath"
+        StringAdd
+    """
+
+    def _line_is_push_string(line: PcodeLine) -> bool:
+        return bool(
+            is_pcode_instruction(line)
+            and line.opcode == "Push"
+            and len(line.operands) == 1
+            and line.operands[0].type == "string"
+        )
+
+    def _line_is_stringadd(line: PcodeLine) -> bool:
+        return bool(is_pcode_instruction(line) and line.opcode == "StringAdd" and not line.operands)
+
+    canonicalized_lines: list[PcodeLine] = []
+
+    i = 0
+
+    while i < len(lines):
+        if (i + 3) > len(lines):
+            canonicalized_lines.append(lines[i])
+            i += 1
+            continue
+
+        hunk = lines[i : i + 3]  # current plus next 2 lines
+
+        if (
+            not _line_is_push_string(hunk[0])
+            or not _line_is_push_string(hunk[1])
+            or not _line_is_stringadd(hunk[2])
+            or hunk[1].label is not None
+            or hunk[2].label is not None
+        ):
+            canonicalized_lines.append(lines[i])
+            i += 1
+            continue
+
+        concat_push = PcodeInstruction(
+            source_lines=merge_pcode_lines_sources(*hunk),
+            opcode="Push",
+            operands=[PcodeOperand(type="string", value=hunk[0].operands[0].value + hunk[1].operands[0].value)],
+            label=hunk[0].label,
+        )
+
+        canonicalized_lines.append(concat_push)
+        i += 3
+
+    return canonicalized_lines
+
+
 def normalize_block(block: PcodeBlock) -> PcodeBlock:
     """
     Normalize a p-code block with multiple obscure techniques.
@@ -656,6 +712,7 @@ def normalize_block(block: PcodeBlock) -> PcodeBlock:
     lines = normalize_not_not_if_patterns(lines)
     lines = canonicalize_increment_decrement_patterns(lines)
     lines = canonicalize_constant_pool(lines)
+    lines = canonicalize_string_concatenation(lines)
 
     return PcodeBlock(lines=lines, name=block.name)
 

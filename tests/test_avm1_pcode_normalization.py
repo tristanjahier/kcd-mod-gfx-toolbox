@@ -7,6 +7,7 @@ from kcd_gfx_toolbox.avm1.pcode_normalization import (
     canonicalize_numeric_literals,
     canonicalize_push_lines,
     canonicalize_register_references_in_function_block,
+    canonicalize_string_concatenation,
     find_function_end_line,
     find_function_name_and_start_line,
     list_label_references,
@@ -1427,6 +1428,30 @@ def test_canonicalize_constant_pool():
         GetVariable
         Push "Inventory"
         GetMember
+    """)
+
+
+def test_canonicalize_string_concatenation():
+    pcode_sample = sample_pcode("""
+        Push 0
+        StoreRegister 1
+        Pop
+        L1:Push "FSCommand:"
+        Push "OnSound"
+        StringAdd
+        Push "SELECT_ITEM"
+        GetVariable
+    """)
+
+    canonicalized = canonicalize_string_concatenation(pcode_sample.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        Push 0
+        StoreRegister 1
+        Pop
+        L1:Push "FSCommand:OnSound"
+        Push "SELECT_ITEM"
+        GetVariable
     """)
 
 
