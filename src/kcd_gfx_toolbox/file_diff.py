@@ -408,3 +408,8 @@ def align_hunk_pairs(hunks_1: list[TextHunk], hunks_2: list[TextHunk]) -> list[t
             hunk_pairs.append((_flatten_hunk_list(hunks_1[i1:i2]), []))
 
     return hunk_pairs
+
+
+def text_hunks_are_equal(hunk_1: TextHunk, hunk_2: TextHunk) -> bool:
+    """Compare two text hunks and return True if their texts are equal, regardless of line numbers."""
+    return [txt for _, txt in hunk_1] == [txt for _, txt in hunk_2]

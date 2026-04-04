@@ -31,6 +31,7 @@ from .file_diff import (
     align_hunk_pairs,
     cut_text_hunks_with_context,
     diff_file_trees_basic,
+    text_hunks_are_equal,
 )
 from .utils import (
     console,
@@ -398,6 +399,7 @@ def display_detailed_diff_in_actionscript(
     diffset: GfxDiffSet,
     sort_order: DiffSortOrder,
     max_lines: int = 0,
+    debug_mode: bool = False,
 ):
     line_count = 0
 
@@ -623,6 +625,15 @@ def display_detailed_diff_in_actionscript(
                     "[yellow]Unable to map pcode lines to ActionScript source on this side.[/yellow]"
                 )
 
+            if (
+                debug_mode
+                and block.is_paired()
+                and block_a_diff_lines
+                and block_b_diff_lines
+                and text_hunks_are_equal(block_a_hunk, block_b_hunk)
+            ):
+                print_warning("Different p-code, same ActionScript.")
+
             diff_view = SplitDiffView.from_pair(
                 block_a_hunk,
                 block_b_hunk,
@@ -723,6 +734,7 @@ def command(
             help="Control sort order for diffs. 'natural' preserves the original order of blocks within each script. 'changes_desc' shows most modified blocks first, 'changes_asc' does the opposite.",
         ),
     ] = DiffSortOrder.CHANGES_DESC,
+    debug_mode: Annotated[bool, typer.Option("--debug", help="Enable debug mode.")] = False,
 ):
     """
     Compare scripts between two GFx files to surface meaningful changes through normalization.
@@ -874,6 +886,7 @@ def command(
                 diffset,
                 sort_order=sort_order,
                 max_lines=truncate_detailed_diff,
+                debug_mode=debug_mode,
             )
         elif diff_format == "pcode":
             display_detailed_diff_in_pcode(diffset, sort_order=sort_order, max_lines=truncate_detailed_diff)
