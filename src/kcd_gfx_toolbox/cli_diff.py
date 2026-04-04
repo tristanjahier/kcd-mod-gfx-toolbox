@@ -659,7 +659,7 @@ def display_summary(diffset: GfxDiffSet, sort_order: DiffSortOrder):
     )
 
     diff_table = Table(box=box.SIMPLE, show_edge=False, pad_edge=False, header_style=None)
-    diff_table.add_column("Script block relative path")
+    diff_table.add_column("GFx script", no_wrap=True, overflow="ellipsis")
     diff_table.add_column("State")
     diff_table.add_column("Lines changed (baseline)", justify="right")
     diff_table.add_column("(+ label/register alignment)", justify="right")
