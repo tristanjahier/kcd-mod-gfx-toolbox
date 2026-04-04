@@ -2,6 +2,7 @@ from pathlib import Path
 from kcd_gfx_toolbox.avm1.pcode_normalization import (
     canonicalize_constant_pool,
     canonicalize_function_definition_headers,
+    canonicalize_geturl2,
     canonicalize_increment_decrement_patterns,
     canonicalize_labels,
     canonicalize_numeric_literals,
@@ -1452,6 +1453,38 @@ def test_canonicalize_string_concatenation():
         L1:Push "FSCommand:OnSound"
         Push "SELECT_ITEM"
         GetVariable
+    """)
+
+
+def test_canonicalize_geturl2():
+    pcode_sample = sample_pcode("""
+        loc23247:Push "FSCommand:"
+        Push "OnSound"
+        StringAdd
+        Push "NEGATIVE"
+        GetVariable
+        GetURL2 false, false, 1
+        Jump loc23351
+        loc23264:Push "_loc5_"
+        GetVariable
+        Push 1
+        Push "_loc1_"
+    """)
+
+    canonicalized = canonicalize_geturl2(pcode_sample.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        loc23247:Push "FSCommand:"
+        Push "OnSound"
+        StringAdd
+        Push "NEGATIVE"
+        GetVariable
+        GetURL2 false, false, 0
+        Jump loc23351
+        loc23264:Push "_loc5_"
+        GetVariable
+        Push 1
+        Push "_loc1_"
     """)
 
 

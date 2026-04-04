@@ -698,6 +698,34 @@ def canonicalize_string_concatenation(lines: list[PcodeLine]) -> list[PcodeLine]
     return canonicalized_lines
 
 
+def canonicalize_geturl2(lines: list[PcodeLine]) -> list[PcodeLine]:
+    """
+    Set every GetURL2 3rd operand to 0.
+    Example: `GetURL2 false, false, 1` -> `GetURL2 false, false, 0`.
+
+    In KCD these patterns are often bound to FSCommand calls.
+    The current code is probably too naive.
+    """
+    canonicalized_lines: list[PcodeLine] = []
+
+    for line in lines:
+        # TODO: Verify that GetURL2 is always bound to a FSCommand call.
+        if (
+            is_pcode_instruction(line)
+            and line.opcode == "GetURL2"
+            and len(line.operands) == 3
+            and line.operands[0].type == "boolean"
+            and line.operands[1].type == "boolean"
+            and line.operands[2].type == "numeric"
+        ):
+            new_operands = line.operands[:2] + [PcodeOperand(type="numeric", value="0")]
+            canonicalized_lines.append(line.replace(operands=new_operands))
+        else:
+            canonicalized_lines.append(line)
+
+    return canonicalized_lines
+
+
 def normalize_block(block: PcodeBlock) -> PcodeBlock:
     """
     Normalize a p-code block with multiple obscure techniques.
@@ -713,6 +741,7 @@ def normalize_block(block: PcodeBlock) -> PcodeBlock:
     lines = canonicalize_increment_decrement_patterns(lines)
     lines = canonicalize_constant_pool(lines)
     lines = canonicalize_string_concatenation(lines)
+    lines = canonicalize_geturl2(lines)
 
     return PcodeBlock(lines=lines, name=block.name)
 
