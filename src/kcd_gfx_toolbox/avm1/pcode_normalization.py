@@ -624,6 +624,24 @@ def canonicalize_increment_decrement_patterns(lines: list[PcodeLine]) -> list[Pc
     return canonicalized_lines
 
 
+def canonicalize_constant_pool(lines: list[PcodeLine]) -> list[PcodeLine]:
+    """
+    Strip all operands from ConstantPool instructions.
+    It is safe to do because ffdec copies constant names wherever they are used when exporting p-code text.
+    Therefore in practice it never occurs that a change in the constant pool is the only change.
+    """
+    canonicalized_lines: list[PcodeLine] = []
+
+    for line in lines:
+        if not is_pcode_instruction(line) or not line.opcode == "ConstantPool":
+            canonicalized_lines.append(line)
+            continue
+
+        canonicalized_lines.append(line.replace(operands=[PcodeOperand(type="string", value="")]))
+
+    return canonicalized_lines
+
+
 def normalize_block(block: PcodeBlock) -> PcodeBlock:
     """
     Normalize a p-code block with multiple obscure techniques.
@@ -637,6 +655,7 @@ def normalize_block(block: PcodeBlock) -> PcodeBlock:
     lines = canonicalize_labels(lines)
     lines = normalize_not_not_if_patterns(lines)
     lines = canonicalize_increment_decrement_patterns(lines)
+    lines = canonicalize_constant_pool(lines)
 
     return PcodeBlock(lines=lines, name=block.name)
 

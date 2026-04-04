@@ -1,5 +1,6 @@
 from pathlib import Path
 from kcd_gfx_toolbox.avm1.pcode_normalization import (
+    canonicalize_constant_pool,
     canonicalize_function_definition_headers,
     canonicalize_increment_decrement_patterns,
     canonicalize_labels,
@@ -1406,6 +1407,26 @@ def test_canonicalize_increment_decrement_patterns_registers_dont_match_unchange
         Jump L8
         L7:Push register2
         Return
+    """)
+
+
+def test_canonicalize_constant_pool():
+    pcode_sample = sample_pcode("""
+        ConstantPool "_global", "CestLaFete", "TotoCaca", "ASSetPropFlags"
+        Push "_global"
+        GetVariable
+        Push "Inventory"
+        GetMember
+    """)
+
+    canonicalized = canonicalize_constant_pool(pcode_sample.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        ConstantPool ""
+        Push "_global"
+        GetVariable
+        Push "Inventory"
+        GetMember
     """)
 
 
