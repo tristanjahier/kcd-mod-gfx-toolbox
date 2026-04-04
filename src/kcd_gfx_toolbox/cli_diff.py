@@ -208,6 +208,8 @@ def normalize_scripts(
     result_table.add_column("Anonymous", justify="right")
     result_table.add_column("Top-level", justify="right")
 
+    results.sort(key=lambda res: res[0])
+
     for rel_path, stats in results:
         result_table.add_row(
             format_script_path(rel_path),
