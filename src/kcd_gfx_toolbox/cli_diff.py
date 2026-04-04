@@ -236,11 +236,15 @@ def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table, sort_order: D
             return cast(str, n.value)
         elif n.type == GfxDiffTreeNodeType.SCRIPT:
             script = cast(GfxScript, n.value)
-            return str(script.side_a_path or script.side_b_path)
+            return (
+                f"{script.side_a_path}|{script.side_b_path}"
+                if script.is_paired()
+                else str(script.side_a_path or script.side_b_path)
+            )
         elif n.type == GfxDiffTreeNodeType.SCRIPT_BLOCK:
             block = cast(GfxScriptBlock, n.value)
             block_name_key = (
-                f"{block.side_a_name} {block.side_b_name}"
+                f"{block.side_a_name}|{block.side_b_name}"
                 if block.is_paired()
                 else str(block.side_a_name or block.side_b_name)
             )
