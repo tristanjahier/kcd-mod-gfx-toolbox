@@ -637,8 +637,6 @@ def display_detailed_diff_in_actionscript(
             diff_view = SplitDiffView.from_pair(
                 block_a_hunk,
                 block_b_hunk,
-                left_highlighted_lines=block_a_diff_lines,
-                right_highlighted_lines=block_b_diff_lines,
                 syntax_lexer=syntax_lexer,
                 word_wrap=True,
             )

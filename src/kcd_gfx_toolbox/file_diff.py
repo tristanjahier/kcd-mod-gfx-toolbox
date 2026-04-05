@@ -300,7 +300,14 @@ def format_path_rename_git_style(path_a: Path, path_b: Path | None) -> str:
     )
 
 
-TextHunk: TypeAlias = list[tuple[int, str]]
+@dataclass(frozen=True, slots=True)
+class TextHunkLine:
+    index: int
+    text: str
+    is_context: bool
+
+
+TextHunk: TypeAlias = list[TextHunkLine]
 
 
 def cut_text_hunks_with_context(
@@ -339,17 +346,18 @@ def cut_text_hunks_with_context(
 
         for i in range(span.start - context_length, span.start):
             if i >= 0:
-                hunk.append((i, text_lines[i]))
+                hunk.append(TextHunkLine(i, text_lines[i], is_context=True))
 
-        hunk.extend(list(enumerate(text_lines[span], start=span.start)))
+        for i, line in enumerate(text_lines[span], start=span.start):
+            hunk.append(TextHunkLine(i, line, is_context=False))
 
         for i in range(span.stop, span.stop + context_length):
             if i < len(text_lines):
-                hunk.append((i, text_lines[i]))
+                hunk.append(TextHunkLine(i, text_lines[i], is_context=True))
 
         hunks.append(hunk)
 
-    hunks.sort(key=lambda h: h[0][0])
+    hunks.sort(key=lambda h: h[0].index)  # Sort hunks by first line number.
 
     # Merge touching/overlapping hunks if required.
     if not merge or len(hunks) < 2:
@@ -363,12 +371,20 @@ def cut_text_hunks_with_context(
             last_hunk = hunk
             continue
 
-        hunk_first_line = hunk[0][0]
-        last_hunk_last_line = last_hunk[-1][0]
+        hunk_first_line = hunk[0].index
+        last_hunk_last_line = last_hunk[-1].index
 
         if last_hunk_last_line >= hunk_first_line:
             last_hunk.extend(hunk)
-            last_hunk = list(dict.fromkeys(last_hunk).keys())  # deduplicate
+            deduped_hunk: dict[int, TextHunkLine] = {}
+
+            for line in last_hunk:
+                known_line = deduped_hunk.get(line.index)  # Last known line for that index.
+
+                if known_line is None or (known_line.is_context and not line.is_context):
+                    deduped_hunk[line.index] = line
+
+            last_hunk = list(deduped_hunk.values())
 
         else:
             merged_hunks.append(last_hunk)
@@ -389,8 +405,8 @@ def align_hunk_pairs(hunks_1: list[TextHunk], hunks_2: list[TextHunk]) -> list[t
 
     seqmatch = difflib.SequenceMatcher(
         None,
-        ["\n".join((txt for _, txt in h)) for h in hunks_1],
-        ["\n".join((txt for _, txt in h)) for h in hunks_2],
+        ["\n".join((line.text for line in h)) for h in hunks_1],
+        ["\n".join((line.text for line in h)) for h in hunks_2],
         autojunk=False,
     )
 
@@ -412,4 +428,4 @@ def align_hunk_pairs(hunks_1: list[TextHunk], hunks_2: list[TextHunk]) -> list[t
 
 def text_hunks_are_equal(hunk_1: TextHunk, hunk_2: TextHunk) -> bool:
     """Compare two text hunks and return True if their texts are equal, regardless of line numbers."""
-    return [txt for _, txt in hunk_1] == [txt for _, txt in hunk_2]
+    return [line.text for line in hunk_1] == [line.text for line in hunk_2]

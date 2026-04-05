@@ -97,21 +97,15 @@ class SplitDiffView:
         cls,
         left: TextHunk | SplitDiffViewMessagePane,
         right: TextHunk | SplitDiffViewMessagePane,
-        left_highlighted_lines: set[int] | None = None,
-        right_highlighted_lines: set[int] | None = None,
         **kwargs,
     ) -> Self:
         if not isinstance(left, SplitDiffViewMessagePane):
-            left_pane = SplitDiffViewCodePane(left, highlighted_lines=left_highlighted_lines, **kwargs)
-        elif left_highlighted_lines:
-            raise ValueError("Cannot highlight lines in a message pane.")
+            left_pane = SplitDiffViewCodePane(left, **kwargs)
         else:
             left_pane = left
 
         if not isinstance(right, SplitDiffViewMessagePane):
-            right_pane = SplitDiffViewCodePane(right, highlighted_lines=right_highlighted_lines, **kwargs)
-        elif right_highlighted_lines:
-            raise ValueError("Cannot highlight lines in a message pane.")
+            right_pane = SplitDiffViewCodePane(right, **kwargs)
         else:
             right_pane = right
 
@@ -122,7 +116,6 @@ class SplitDiffViewCodePane(SplitDiffViewPane):
     def __init__(
         self,
         text_hunk: TextHunk,
-        highlighted_lines: set[int] | None = None,
         background_color: str | None = "#17171a",
         padding: PaddingDimensions = (1, 1),
         word_wrap: bool = False,
@@ -130,7 +123,6 @@ class SplitDiffViewCodePane(SplitDiffViewPane):
         pygments_style: type[PygmentsStyle] | None = None,
     ):
         self.text_hunk = text_hunk
-        self.highlighted_lines = highlighted_lines or set()
         self.background_color = background_color
         self.padding = padding
         self.word_wrap = word_wrap
@@ -146,7 +138,7 @@ class SplitDiffViewCodePane(SplitDiffViewPane):
         # Max between min width and length of the biggest line number.
         gutter_width = max(
             self.gutter_min_width,
-            max((len(str(ln)) for ln, _ in self.text_hunk if ln is not None), default=0),
+            max((len(str(line.index)) for line in self.text_hunk), default=0),
         )
 
         if self.word_wrap:
@@ -154,8 +146,8 @@ class SplitDiffViewCodePane(SplitDiffViewPane):
             text_width = max(1, pane_width - left_padding - right_padding - gutter_width - self.gutter_text_spacing)
 
             content_height = 0
-            for _, txt in self.text_hunk:
-                content_height += max(1, len(Text(txt).wrap(console, text_width, overflow="ellipsis")))
+            for line in self.text_hunk:
+                content_height += max(1, len(Text(line.text).wrap(console, text_width, overflow="ellipsis")))
         else:
             content_height = len(self.text_hunk)
 
@@ -174,21 +166,15 @@ class SplitDiffViewCodePane(SplitDiffViewPane):
         if self.background_color:
             grid.row_styles = [bg_style]
 
-        line_highlighting = bool(self.highlighted_lines)
-
-        for ln, text in self.text_hunk:
+        for line in self.text_hunk:
             if self.syntax_lexer is not None:
-                text = _highlight_line(text, self.syntax_lexer, self.pygments_style)
+                text = _highlight_line(line.text, self.syntax_lexer, self.pygments_style)
             else:
-                text = Text(text)
+                text = Text(line.text)
 
-            if ln is None:
-                ln = ""
+            text.style = "dim" if line.is_context else "bold"
 
-            if line_highlighting:
-                text.style = "bold" if ln in self.highlighted_lines else "dim"
-
-            grid.add_row(str(ln), text)
+            grid.add_row(str(line.index), text)
 
         if vertical_gap is not None:
             for _ in range(max(0, vertical_gap)):
