@@ -8,11 +8,19 @@ def resolve_ffdec(arg: Path | None) -> Path:
     ffdec_path = arg
 
     if ffdec_path is None:
-        # If nothing was provided as an argument, we try to auto-discover it (via PATH).
+        # If nothing was provided as an argument, we try to auto-discover it (via PATH or via platform defaults).
+        found_path = None
+
         if platform.system().lower() == "windows":
             found_path = shutil.which("ffdec-cli") or shutil.which("ffdec-cli.exe")
-        else:
+        elif platform.system().lower() == "darwin":
+            default_macos_path = "/Applications/FFDec.app/Contents/MacOS/FFDec"
+            if Path(default_macos_path).is_file():
+                found_path = default_macos_path
+
+        if not found_path:
             found_path = shutil.which("ffdec") or shutil.which("ffdec.sh")
+
         if found_path:
             return Path(found_path)
         raise FileNotFoundError("Unable to automatically resolve the path to ffdec.")
