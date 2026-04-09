@@ -1,7 +1,7 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import difflib
 from pathlib import Path
-from typing import NamedTuple, TypeAlias
+from typing import NamedTuple
 import itertools
 from .utils import list_tree_files, read_file_lines, sha256_file
 
@@ -305,9 +305,12 @@ class TextHunkLine:
     index: int
     text: str
     is_context: bool
+    is_deletion: bool = False
+    is_addition: bool = False
 
 
-TextHunk: TypeAlias = list[TextHunkLine]
+class TextHunk(list[TextHunkLine]):
+    pass
 
 
 def cut_text_hunks_with_context(
@@ -342,7 +345,7 @@ def cut_text_hunks_with_context(
         if span.start < 0 or span.stop > len(text_lines):
             raise ValueError(f"Line selection contains an out-of-bounds span: [{span.start}:{span.stop}].")
 
-        hunk: TextHunk = []
+        hunk: TextHunk = TextHunk()
 
         for i in range(span.start - context_length, span.start):
             if i >= 0:
@@ -384,7 +387,7 @@ def cut_text_hunks_with_context(
                 if known_line is None or (known_line.is_context and not line.is_context):
                     deduped_hunk[line.index] = line
 
-            last_hunk = list(deduped_hunk.values())
+            last_hunk = TextHunk(deduped_hunk.values())
 
         else:
             merged_hunks.append(last_hunk)
@@ -411,7 +414,7 @@ def align_hunk_pairs(hunks_1: list[TextHunk], hunks_2: list[TextHunk]) -> list[t
     )
 
     def _flatten_hunk_list(hunk_list: list[TextHunk]) -> TextHunk:
-        return list(itertools.chain.from_iterable(hunk_list))
+        return TextHunk(itertools.chain.from_iterable(hunk_list))
 
     for tag, i1, i2, j1, j2 in seqmatch.get_opcodes():
         if tag == "equal":
@@ -419,9 +422,9 @@ def align_hunk_pairs(hunks_1: list[TextHunk], hunks_2: list[TextHunk]) -> list[t
         elif tag == "replace":
             hunk_pairs.append((_flatten_hunk_list(hunks_1[i1:i2]), _flatten_hunk_list(hunks_2[j1:j2])))
         elif tag == "insert":
-            hunk_pairs.append(([], _flatten_hunk_list(hunks_2[j1:j2])))
+            hunk_pairs.append((TextHunk(), _flatten_hunk_list(hunks_2[j1:j2])))
         elif tag == "delete":
-            hunk_pairs.append((_flatten_hunk_list(hunks_1[i1:i2]), []))
+            hunk_pairs.append((_flatten_hunk_list(hunks_1[i1:i2]), TextHunk()))
 
     return hunk_pairs
 
@@ -429,3 +432,22 @@ def align_hunk_pairs(hunks_1: list[TextHunk], hunks_2: list[TextHunk]) -> list[t
 def text_hunks_are_equal(hunk_1: TextHunk, hunk_2: TextHunk) -> bool:
     """Compare two text hunks and return True if their texts are equal, regardless of line numbers."""
     return [line.text for line in hunk_1] == [line.text for line in hunk_2]
+
+
+def diff_text_hunks(hunk_1: TextHunk, hunk_2: TextHunk) -> tuple[TextHunk, TextHunk]:
+    """
+    Diff two text hunks and return copies with change-annotated lines.
+    """
+    diffed_hunk_1 = TextHunk(replace(thl) for thl in hunk_1)
+    diffed_hunk_2 = TextHunk(replace(thl) for thl in hunk_2)
+
+    diff_spans = diff_texts([line.text for line in diffed_hunk_1], [line.text for line in diffed_hunk_2]).spans
+
+    for span in diff_spans:
+        for i in range(*span.a):
+            diffed_hunk_1[i] = replace(diffed_hunk_1[i], is_deletion=True)
+
+        for i in range(*span.b):
+            diffed_hunk_2[i] = replace(diffed_hunk_2[i], is_addition=True)
+
+    return (diffed_hunk_1, diffed_hunk_2)

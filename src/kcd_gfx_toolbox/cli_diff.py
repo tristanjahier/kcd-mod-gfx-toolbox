@@ -28,9 +28,11 @@ from .extraction import (
 )
 from .avm1.pcode_normalization import NormalizationResult, normalize_file
 from .file_diff import (
+    TextHunk,
     align_hunk_pairs,
     cut_text_hunks_with_context,
     diff_file_trees_basic,
+    diff_text_hunks,
     text_hunks_are_equal,
 )
 from .utils import (
@@ -624,6 +626,14 @@ def display_detailed_diff_in_actionscript(
                 block_b_hunk = SplitDiffViewMessagePane(
                     "[yellow]Unable to map pcode lines to ActionScript source on this side.[/yellow]"
                 )
+
+            # Highlight different lines (additions, deletions) between the two hunks.
+            if block.is_paired() and isinstance(block_a_hunk, TextHunk) and isinstance(block_b_hunk, TextHunk):
+                block_a_hunk, block_b_hunk = diff_text_hunks(block_a_hunk, block_b_hunk)
+            elif block.side_a_name is None and isinstance(block_b_hunk, TextHunk):
+                _, block_b_hunk = diff_text_hunks(TextHunk(), block_b_hunk)
+            elif block.side_b_name is None and isinstance(block_a_hunk, TextHunk):
+                block_a_hunk, _ = diff_text_hunks(block_a_hunk, TextHunk())
 
             if (
                 debug_mode

@@ -4,6 +4,7 @@ from math import ceil, floor
 from typing import Self
 from rich.console import Console, ConsoleOptions, RenderResult, RenderableType
 from rich.padding import Padding, PaddingDimensions
+from rich.style import Style
 from rich.table import Table
 from rich.text import Text
 from pygments.lexer import Lexer
@@ -172,8 +173,14 @@ class SplitDiffViewCodePane(SplitDiffViewPane):
             else:
                 text = Text(line.text)
 
-            text.style = "dim" if line.is_context else "bold"
+            style = Style(dim=True) if line.is_context else Style(bold=True)
 
+            if line.is_deletion:
+                style += Style(bgcolor="#4A2326")
+            elif line.is_addition:
+                style += Style(bgcolor="#23462A")
+
+            text.style = style
             grid.add_row(str(line.index), text)
 
         if vertical_gap is not None:
