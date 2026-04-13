@@ -28,12 +28,13 @@ from .extraction import (
 )
 from .avm1.pcode_normalization import NormalizationResult, normalize_file
 from .file_diff import (
+    DiffHunk,
     TextHunk,
     align_hunk_pairs,
     cut_text_hunks_with_context,
     diff_file_trees_basic,
     diff_text_hunks,
-    text_hunks_are_equal,
+    hunks_are_equal,
 )
 from .utils import (
     console,
@@ -613,34 +614,33 @@ def display_detailed_diff_in_actionscript(
         )
 
         for block_a_hunk, block_b_hunk in hunk_pairs:
-            if not block.is_paired():
+            if block.is_paired():
+                if block_a_diff_lines and block_b_diff_lines:
+                    block_a_hunk, block_b_hunk = diff_text_hunks(block_a_hunk, block_b_hunk)
+                elif not block_a_diff_lines:
+                    block_a_hunk = SplitDiffViewMessagePane(
+                        "[yellow]Unable to map pcode lines to ActionScript source on this side.[/yellow]"
+                    )
+                    block_b_hunk = DiffHunk([block_b_hunk])
+                elif not block_b_diff_lines:
+                    block_a_hunk = DiffHunk([block_a_hunk])
+                    block_b_hunk = SplitDiffViewMessagePane(
+                        "[yellow]Unable to map pcode lines to ActionScript source on this side.[/yellow]"
+                    )
+            else:
                 if block.side_a_name is None:
                     block_a_hunk = SplitDiffViewMessagePane("[dim]This block does not exist on side A.[/dim]")
+                    _, block_b_hunk = diff_text_hunks(TextHunk(), block_b_hunk)
                 else:
+                    block_a_hunk, _ = diff_text_hunks(block_a_hunk, TextHunk())
                     block_b_hunk = SplitDiffViewMessagePane("[dim]This block does not exist on side B.[/dim]")
-            elif not block_a_diff_lines:
-                block_a_hunk = SplitDiffViewMessagePane(
-                    "[yellow]Unable to map pcode lines to ActionScript source on this side.[/yellow]"
-                )
-            elif not block_b_diff_lines:
-                block_b_hunk = SplitDiffViewMessagePane(
-                    "[yellow]Unable to map pcode lines to ActionScript source on this side.[/yellow]"
-                )
-
-            # Highlight different lines (additions, deletions) between the two hunks.
-            if block.is_paired() and isinstance(block_a_hunk, TextHunk) and isinstance(block_b_hunk, TextHunk):
-                block_a_hunk, block_b_hunk = diff_text_hunks(block_a_hunk, block_b_hunk)
-            elif block.side_a_name is None and isinstance(block_b_hunk, TextHunk):
-                _, block_b_hunk = diff_text_hunks(TextHunk(), block_b_hunk)
-            elif block.side_b_name is None and isinstance(block_a_hunk, TextHunk):
-                block_a_hunk, _ = diff_text_hunks(block_a_hunk, TextHunk())
 
             if (
                 debug_mode
                 and block.is_paired()
                 and block_a_diff_lines
                 and block_b_diff_lines
-                and text_hunks_are_equal(block_a_hunk, block_b_hunk)
+                and hunks_are_equal(block_a_hunk, block_b_hunk)
             ):
                 print_warning("Different p-code, same ActionScript.")
 

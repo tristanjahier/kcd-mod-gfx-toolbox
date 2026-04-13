@@ -2,7 +2,9 @@ import re
 import pytest
 from pathlib import Path
 from kcd_gfx_toolbox.file_diff import (
+    DiffHunk,
     FileDiff,
+    TextHunk,
     TextHunkLine,
     TextDiff,
     TextDiffSpan,
@@ -10,6 +12,7 @@ from kcd_gfx_toolbox.file_diff import (
     cut_text_hunks_with_context,
     diff_file_trees,
     diff_file_trees_basic,
+    diff_text_hunks,
     diff_texts,
     format_path_rename_git_style,
 )
@@ -41,6 +44,11 @@ def _create_fake_file_tree(tmp_path: Path, paths: dict[str, str | None]):
             file_path.write_text(content or "", encoding="utf-8")
 
 
+def _hunk_line(index: int, text: str, **kwargs) -> TextHunkLine:
+    """Create a text hunk selected line."""
+    return TextHunkLine(index=index, text=text, **kwargs)
+
+
 def _hunk_select(index: int, text: str) -> TextHunkLine:
     """Create a text hunk selected line."""
     return TextHunkLine(index=index, text=text, is_context=False)
@@ -49,6 +57,11 @@ def _hunk_select(index: int, text: str) -> TextHunkLine:
 def _hunk_ctx(index: int, text: str) -> TextHunkLine:
     """Create a text hunk context line."""
     return TextHunkLine(index=index, text=text, is_context=True)
+
+
+def _sample_text_hunk(text: str) -> TextHunk:
+    """Create a text hunk from lines."""
+    return TextHunk(_hunk_select(i, line) for i, line in enumerate(sample_text_lines(text), start=0))
 
 
 def test_diff_file_trees_basic_with_no_differences(tmp_path: Path):
@@ -1508,3 +1521,106 @@ def test_align_hunk_pairs():
             ],
         ),
     ]
+
+
+def test_diff_text_hunks():
+    text_sample_1 = _sample_text_hunk("""
+        Push register5
+        PushDuplicate
+        Not
+        If L2
+        Pop
+        Push register2
+        Push register3
+        Push "UNDEFINED_SLOT"
+        GetMember
+    """)
+
+    text_sample_2 = _sample_text_hunk("""
+        Push 1
+        StoreRegister 7
+        Pop
+        Push register5
+        PushDuplicate
+        Equals2
+        If L9
+        StoreRegister 2
+        Pop
+        Push register2
+        Push "UNDEFINED_SLOT"
+        GetMember
+    """)
+
+    diffed_hunk_1, diffed_hunk_2 = diff_text_hunks(text_sample_1, text_sample_2)
+
+    # 3 lines added at the beginning
+    # 2-3 lines replaced in the middle
+    # 1 line deleted near the end
+
+    assert diffed_hunk_1 == DiffHunk(
+        [
+            TextHunk(),
+            TextHunk(
+                [
+                    _hunk_line(0, "Push register5", is_context=True),
+                    _hunk_line(1, "PushDuplicate", is_context=True),
+                ]
+            ),
+            TextHunk([_hunk_line(2, "Not", is_deletion=True), _hunk_line(3, "If L2", is_deletion=True)]),
+            TextHunk(
+                [
+                    _hunk_line(4, "Pop", is_context=True),
+                    _hunk_line(5, "Push register2", is_context=True),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_line(6, "Push register3", is_deletion=True),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_line(7, 'Push "UNDEFINED_SLOT"', is_context=True),
+                    _hunk_line(8, "GetMember", is_context=True),
+                ]
+            ),
+        ]
+    )
+
+    assert diffed_hunk_2 == DiffHunk(
+        [
+            TextHunk(
+                [
+                    _hunk_line(0, "Push 1", is_addition=True),
+                    _hunk_line(1, "StoreRegister 7", is_addition=True),
+                    _hunk_line(2, "Pop", is_addition=True),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_line(3, "Push register5", is_context=True),
+                    _hunk_line(4, "PushDuplicate", is_context=True),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_line(5, "Equals2", is_addition=True),
+                    _hunk_line(6, "If L9", is_addition=True),
+                    _hunk_line(7, "StoreRegister 2", is_addition=True),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_line(8, "Pop", is_context=True),
+                    _hunk_line(9, "Push register2", is_context=True),
+                ]
+            ),
+            TextHunk(),
+            TextHunk(
+                [
+                    _hunk_line(10, 'Push "UNDEFINED_SLOT"', is_context=True),
+                    _hunk_line(11, "GetMember", is_context=True),
+                ]
+            ),
+        ]
+    )

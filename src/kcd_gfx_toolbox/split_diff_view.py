@@ -1,5 +1,6 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
+from itertools import zip_longest
 from math import ceil, floor
 from typing import Self
 from rich.console import Console, ConsoleOptions, RenderResult, RenderableType
@@ -12,7 +13,7 @@ from pygments.style import Style as PygmentsStyle
 from pygments.styles.material import MaterialStyle as DefaultPygmentStyle
 from pygments import lex as pygments_lex
 
-from .file_diff import TextHunk
+from .file_diff import DiffHunk, TextHunkLine
 
 
 def _highlight_line(line: str, lexer: Lexer, pygments_style: type[PygmentsStyle]) -> Text:
@@ -80,6 +81,16 @@ class SplitDiffView:
         grid.add_column("pane_b", ratio=1)
 
         left_pane_width, right_pane_width = self._compute_pane_widths(options.max_width)
+
+        if isinstance(self.left_pane, SplitDiffViewCodePane) and isinstance(self.right_pane, SplitDiffViewCodePane):
+            SplitDiffViewCodePane.render_table_rows_in_pair(
+                self.left_pane, self.right_pane, console, left_pane_width, right_pane_width
+            )
+        elif isinstance(self.left_pane, SplitDiffViewCodePane):
+            self.left_pane.render_table_rows()
+        elif isinstance(self.right_pane, SplitDiffViewCodePane):
+            self.right_pane.render_table_rows()
+
         left_height = self.left_pane.compute_height(console, left_pane_width)
         right_height = self.right_pane.compute_height(console, right_pane_width)
         target_height = max(left_height, right_height)
@@ -96,8 +107,8 @@ class SplitDiffView:
     @classmethod
     def from_pair(
         cls,
-        left: TextHunk | SplitDiffViewMessagePane,
-        right: TextHunk | SplitDiffViewMessagePane,
+        left: DiffHunk | SplitDiffViewMessagePane,
+        right: DiffHunk | SplitDiffViewMessagePane,
         **kwargs,
     ) -> Self:
         if not isinstance(left, SplitDiffViewMessagePane):
@@ -116,14 +127,14 @@ class SplitDiffView:
 class SplitDiffViewCodePane(SplitDiffViewPane):
     def __init__(
         self,
-        text_hunk: TextHunk,
+        diff_hunk: DiffHunk,
         background_color: str | None = "#17171a",
         padding: PaddingDimensions = (1, 1),
         word_wrap: bool = False,
         syntax_lexer: Lexer | None = None,
         pygments_style: type[PygmentsStyle] | None = None,
     ):
-        self.text_hunk = text_hunk
+        self.diff_hunk = diff_hunk
         self.background_color = background_color
         self.padding = padding
         self.word_wrap = word_wrap
@@ -131,28 +142,104 @@ class SplitDiffViewCodePane(SplitDiffViewPane):
         self.pygments_style: type[PygmentsStyle] = pygments_style or DefaultPygmentStyle
         self.gutter_min_width: int = 5
         self.gutter_text_spacing: int = 3
+        self.rows: list[tuple[RenderableType, ...]] | None = None
+        self._gutter_width_cache: int | None = None
+
+    def compute_gutter_width(self) -> int:
+        """Max between min width and length of the biggest line number."""
+        if self._gutter_width_cache is not None:
+            return self._gutter_width_cache
+
+        self._gutter_width_cache = max(
+            self.gutter_min_width,
+            max((len(str(line.index)) for line in self.diff_hunk.lines()), default=0),
+        )
+
+        return self._gutter_width_cache
+
+    def compute_line_height(self, line: TextHunkLine, console: Console, pane_width: int) -> int:
+        """Compute the render height of a TextHunkLine for a given width."""
+        if not self.word_wrap:
+            return 1
+
+        _, right_padding, _, left_padding = Padding.unpack(self.padding)
+        gutter_width = self.compute_gutter_width()
+
+        # Compute the width available for the text column.
+        text_width = max(1, pane_width - left_padding - right_padding - gutter_width - self.gutter_text_spacing)
+
+        return max(1, len(Text(line.text).wrap(console, text_width, overflow="ellipsis")))
 
     def compute_height(self, console: Console, pane_width: int) -> int:
         """Compute the component height for a given width."""
         top_padding, right_padding, bottom_padding, left_padding = Padding.unpack(self.padding)
-
-        # Max between min width and length of the biggest line number.
-        gutter_width = max(
-            self.gutter_min_width,
-            max((len(str(line.index)) for line in self.text_hunk), default=0),
-        )
+        gutter_width = self.compute_gutter_width()
 
         if self.word_wrap:
             # Approximate the width available for the text column.
             text_width = max(1, pane_width - left_padding - right_padding - gutter_width - self.gutter_text_spacing)
 
             content_height = 0
-            for line in self.text_hunk:
-                content_height += max(1, len(Text(line.text).wrap(console, text_width, overflow="ellipsis")))
+            for row in self.rows:
+                # row[1] is the text cell.
+                content_height += max(1, len(Text(str(row[1])).wrap(console, text_width, overflow="ellipsis")))
         else:
-            content_height = len(self.text_hunk)
+            content_height = len(self.rows)
 
         return content_height + top_padding + bottom_padding
+
+    def render_text_hunk_line(self, line: TextHunkLine) -> tuple[RenderableType, ...]:
+        if self.syntax_lexer is not None:
+            text = _highlight_line(line.text, self.syntax_lexer, self.pygments_style)
+        else:
+            text = Text(line.text)
+
+        style = Style()
+
+        if line.is_deletion:
+            style += Style(bgcolor="#4A2326")
+        elif line.is_addition:
+            style += Style(bgcolor="#23462A")
+
+        text.style = style
+
+        return (str(line.index), text)
+
+    def render_table_rows(self):
+        if self.rows is None:
+            self.rows = []
+            for line in self.diff_hunk.lines():
+                self.rows.append(self.render_text_hunk_line(line))
+
+    @classmethod
+    def render_table_rows_in_pair(
+        cls, left: Self, right: Self, console: Console, left_pane_width: int, right_pane_width: int
+    ):
+        left.rows = []
+        right.rows = []
+
+        for left_segment, right_segment in zip(left.diff_hunk, right.diff_hunk):
+            for left_line, right_line in zip_longest(left_segment, right_segment):
+                left_height = 0
+                right_height = 0
+
+                if left_line is not None:
+                    left.rows.append(left.render_text_hunk_line(left_line))
+                    left_height = left.compute_line_height(left_line, console, left_pane_width)
+
+                if right_line is not None:
+                    right.rows.append(right.render_text_hunk_line(right_line))
+                    right_height = right.compute_line_height(right_line, console, right_pane_width)
+
+                if left_height < right_height:
+                    left.rows.extend(
+                        ("", Text("", style=Style(bgcolor="#232326"))) for _ in range(right_height - left_height)
+                    )
+
+                if left_height > right_height:
+                    right.rows.extend(
+                        ("", Text("", style=Style(bgcolor="#232326"))) for _ in range(left_height - right_height)
+                    )
 
     def render(self, vertical_gap: int | None = None) -> RenderableType:
         bg_style = f"on {self.background_color}" if self.background_color is not None else ""
@@ -167,21 +254,10 @@ class SplitDiffViewCodePane(SplitDiffViewPane):
         if self.background_color:
             grid.row_styles = [bg_style]
 
-        for line in self.text_hunk:
-            if self.syntax_lexer is not None:
-                text = _highlight_line(line.text, self.syntax_lexer, self.pygments_style)
-            else:
-                text = Text(line.text)
+        self.render_table_rows()
 
-            style = Style(dim=True) if line.is_context else Style(bold=True)
-
-            if line.is_deletion:
-                style += Style(bgcolor="#4A2326")
-            elif line.is_addition:
-                style += Style(bgcolor="#23462A")
-
-            text.style = style
-            grid.add_row(str(line.index), text)
+        for row in self.rows:
+            grid.add_row(*row)
 
         if vertical_gap is not None:
             for _ in range(max(0, vertical_gap)):

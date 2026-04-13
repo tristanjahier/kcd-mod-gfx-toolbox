@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field, replace
 import difflib
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, Self
 import itertools
 from .utils import list_tree_files, read_file_lines, sha256_file
 
@@ -302,15 +302,38 @@ def format_path_rename_git_style(path_a: Path, path_b: Path | None) -> str:
 
 @dataclass(frozen=True, slots=True)
 class TextHunkLine:
+    """
+    A line in a text hunk identified by its source line number (0-based).
+    It can be annotated with diff contextual information.
+    """
+
     index: int
     text: str
-    is_context: bool
+    is_context: bool = False
     is_deletion: bool = False
     is_addition: bool = False
 
+    def __post_init__(self) -> None:
+        if sum((self.is_context, self.is_deletion, self.is_addition)) > 1:
+            raise ValueError("A TextHunkLine can only have one annotation among context, deletion, or addition.")
+
+    def reannotate(self, is_context: bool = False, is_deletion: bool = False, is_addition: bool = False) -> Self:
+        return replace(self, is_context=is_context, is_deletion=is_deletion, is_addition=is_addition)
+
 
 class TextHunk(list[TextHunkLine]):
-    pass
+    """An ordered sequence of TextHunkLine representing a contiguous hunk of text."""
+
+    ...
+
+
+class DiffHunk(list[TextHunk]):
+    """
+    A sequence of TextHunk in the context of a diff, typically alternating between context and differing regions.
+    """
+
+    def lines(self) -> list[TextHunkLine]:
+        return list(itertools.chain.from_iterable(self))
 
 
 def cut_text_hunks_with_context(
@@ -429,25 +452,37 @@ def align_hunk_pairs(hunks_1: list[TextHunk], hunks_2: list[TextHunk]) -> list[t
     return hunk_pairs
 
 
-def text_hunks_are_equal(hunk_1: TextHunk, hunk_2: TextHunk) -> bool:
-    """Compare two text hunks and return True if their texts are equal, regardless of line numbers."""
-    return [line.text for line in hunk_1] == [line.text for line in hunk_2]
+def hunks_are_equal(hunk_1: TextHunk | DiffHunk, hunk_2: TextHunk | DiffHunk) -> bool:
+    """Compare two hunks and return True if their texts are equal, regardless of line numbers."""
+    lines_1 = hunk_1.lines() if isinstance(hunk_1, DiffHunk) else hunk_1
+    lines_2 = hunk_2.lines() if isinstance(hunk_2, DiffHunk) else hunk_2
+    return [line.text for line in lines_1] == [line.text for line in lines_2]
 
 
-def diff_text_hunks(hunk_1: TextHunk, hunk_2: TextHunk) -> tuple[TextHunk, TextHunk]:
+def diff_text_hunks(hunk_1: TextHunk, hunk_2: TextHunk) -> tuple[DiffHunk, DiffHunk]:
     """
-    Diff two text hunks and return copies with change-annotated lines.
+    Compare two text hunks and return a pair of annotated DiffHunk.
+
+    Text hunks are partitioned into sequences of either equal lines or differing lines (diff spans).
+    Equal lines are annotated with is_context=True.
+    Differing lines are annotated with is_deletion=True on hunk_1 and is_addition=True on hunk_2.
+    Context segments are strictly equal. Segments can be empty (for pure deletions or pure additions).
+    This data structure helps displaying side-by-side diffs.
     """
-    diffed_hunk_1 = TextHunk(replace(thl) for thl in hunk_1)
-    diffed_hunk_2 = TextHunk(replace(thl) for thl in hunk_2)
+    diffed_hunk_1 = DiffHunk()
+    diffed_hunk_2 = DiffHunk()
 
-    diff_spans = diff_texts([line.text for line in diffed_hunk_1], [line.text for line in diffed_hunk_2]).spans
+    hunk_1_lines: list[str] = [line.text for line in hunk_1]
+    hunk_2_lines: list[str] = [line.text for line in hunk_2]
+    seqmatch = difflib.SequenceMatcher(None, hunk_1_lines, hunk_2_lines, autojunk=False)
 
-    for span in diff_spans:
-        for i in range(*span.a):
-            diffed_hunk_1[i] = replace(diffed_hunk_1[i], is_deletion=True)
+    for tag, i1, i2, j1, j2 in seqmatch.get_opcodes():
+        if tag == "equal":
+            diffed_hunk_1.append(TextHunk([line.reannotate(is_context=True) for line in hunk_1[i1:i2]]))
+            diffed_hunk_2.append(TextHunk([line.reannotate(is_context=True) for line in hunk_2[j1:j2]]))
 
-        for i in range(*span.b):
-            diffed_hunk_2[i] = replace(diffed_hunk_2[i], is_addition=True)
+        else:
+            diffed_hunk_1.append(TextHunk([line.reannotate(is_deletion=True) for line in hunk_1[i1:i2]]))
+            diffed_hunk_2.append(TextHunk([line.reannotate(is_addition=True) for line in hunk_2[j1:j2]]))
 
     return (diffed_hunk_1, diffed_hunk_2)
