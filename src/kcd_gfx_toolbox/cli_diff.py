@@ -621,9 +621,17 @@ def display_detailed_diff_in_actionscript(
                     block_a_hunk = SplitDiffViewMessagePane(
                         "[yellow]Unable to map pcode lines to ActionScript source on this side.[/yellow]"
                     )
-                    block_b_hunk = DiffHunk([block_b_hunk])
+                    block_b_hunk = DiffHunk.wrap(
+                        TextHunk(
+                            [(ln.reannotate(is_addition=True) if not ln.is_context else ln) for ln in block_b_hunk]
+                        )
+                    )
                 elif not block_b_diff_lines:
-                    block_a_hunk = DiffHunk([block_a_hunk])
+                    block_a_hunk = DiffHunk.wrap(
+                        TextHunk(
+                            [(ln.reannotate(is_deletion=True) if not ln.is_context else ln) for ln in block_a_hunk]
+                        )
+                    )
                     block_b_hunk = SplitDiffViewMessagePane(
                         "[yellow]Unable to map pcode lines to ActionScript source on this side.[/yellow]"
                     )

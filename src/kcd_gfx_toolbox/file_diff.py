@@ -335,6 +335,10 @@ class DiffHunk(list[TextHunk]):
     def lines(self) -> list[TextHunkLine]:
         return list(itertools.chain.from_iterable(self))
 
+    @classmethod
+    def wrap(cls, text_hunk: TextHunk) -> Self:
+        return cls([text_hunk])
+
 
 def cut_text_hunks_with_context(
     text_lines: list[str], selection: list[int] | set[int], context_length=3, merge: bool = False
