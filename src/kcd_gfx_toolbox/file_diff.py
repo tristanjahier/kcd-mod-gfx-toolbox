@@ -327,6 +327,7 @@ class TextHunkLine:
     def __repr__(self) -> str:
         return self.debug_repr()
 
+
 class TextHunk(list[TextHunkLine]):
     """An ordered sequence of TextHunkLine representing a contiguous hunk of text."""
 
