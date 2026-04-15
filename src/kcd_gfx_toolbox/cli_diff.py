@@ -806,6 +806,7 @@ def command(
     show_summary_only: Annotated[
         bool, typer.Option("--summary-only", help="Only show a summary, not detailed file differences.")
     ] = False,
+    hide_summary: Annotated[bool, typer.Option("--no-summary", help="Do not show the summary, only diffs.")] = False,
     diff_format: Annotated[
         Literal["actionscript", "pcode"], typer.Option("--format", help="Set the format for detailed diff.")
     ] = "actionscript",
@@ -865,6 +866,9 @@ def command(
     except FileNotFoundError as e:
         print_error(e)
         raise typer.Exit(code=1)
+
+    if show_summary_only and hide_summary:
+        raise typer.BadParameter("Options --summary-only and --no-summary are mutually exclusive.")
 
     try:
         details_filters = parse_and_validate_details_filters(filters)
@@ -997,5 +1001,6 @@ def command(
                 diffset, sort_order=sort_order, max_lines=truncate_detailed_diff, filters=details_filters
             )
 
-    console.line()
-    display_summary(diffset, sort_order)
+    if not hide_summary:
+        console.line()
+        display_summary(diffset, sort_order)
