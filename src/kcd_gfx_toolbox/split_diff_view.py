@@ -197,9 +197,9 @@ class SplitDiffViewCodePane(SplitDiffViewPane):
         style = Style()
 
         if line.is_deletion:
-            style += Style(bgcolor="#4A2326")
+            style += Style(bgcolor="#4E1D20")
         elif line.is_addition:
-            style += Style(bgcolor="#23462A")
+            style += Style(bgcolor="#1D4E28")
 
         text.style = style
 
