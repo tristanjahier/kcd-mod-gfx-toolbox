@@ -320,11 +320,19 @@ class TextHunkLine:
     def reannotate(self, is_context: bool = False, is_deletion: bool = False, is_addition: bool = False) -> Self:
         return replace(self, is_context=is_context, is_deletion=is_deletion, is_addition=is_addition)
 
+    def debug_repr(self, line_padding: int = 0) -> str:
+        annotation = "ctx" if self.is_context else "del" if self.is_deletion else "add" if self.is_addition else "..."
+        return f"({annotation}) {self.index:>{line_padding}d}:  {self.text}"
+
+    def __repr__(self) -> str:
+        return self.debug_repr()
 
 class TextHunk(list[TextHunkLine]):
     """An ordered sequence of TextHunkLine representing a contiguous hunk of text."""
 
-    ...
+    def __repr__(self) -> str:
+        line_padding = max((len(str(line.index)) for line in self), default=0)
+        return "\n".join(ln.debug_repr(line_padding) for ln in self)
 
 
 class DiffHunk(list[TextHunk]):
