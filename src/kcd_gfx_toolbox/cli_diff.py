@@ -61,6 +61,35 @@ class DiffSortOrder(StrEnum):
     CHANGES_ASC = "changes_asc"
 
 
+def parse_and_validate_details_filters(value: str | None) -> dict | None:
+    """Parse and validate the --filter option value."""
+    if value is None:
+        return None
+
+    value = value.strip()
+    filters: dict = {"script": None, "block": None}
+
+    if value == "":
+        raise ValueError("--filter value must not be empty.")
+
+    for filter_part in value.split(","):
+        if "=" not in filter_part:
+            raise ValueError('--filter value is malformed. It must look like "script=Inventory,block=character".')
+
+        fkey, fval = filter_part.strip().split("=", maxsplit=1)
+        fkey = fkey.strip()
+        fval = fval.strip()
+
+        if fkey not in ["script", "block"]:
+            raise ValueError('--filter value is invalid. Filter keys must be "script" or "block".')
+        if fval == "":
+            raise ValueError("--filter value is invalid. Filter values must not be empty.")
+
+        filters[fkey] = fval.lower()
+
+    return filters
+
+
 def format_script_path(path: Path | str, path_rename: Path | str | None = None) -> str:
     """Format a GFx script path for display, optionally showing a rename."""
     path = Path(path)
@@ -337,15 +366,28 @@ def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table, sort_order: D
         _render_node(child, is_last_child=is_last)
 
 
-def display_detailed_diff_in_pcode(diffset: GfxDiffSet, sort_order: DiffSortOrder, max_lines: int = 0):
+def display_detailed_diff_in_pcode(
+    diffset: GfxDiffSet, sort_order: DiffSortOrder, max_lines: int = 0, filters: dict | None = None
+):
     """
     Display line-by-line differences for each modified script block.
     """
     line_count = 0
 
     sorted_pairs: list[tuple[GfxScript, GfxScriptBlock]] = []
+    scripts: list[GfxScript] = []
 
-    scripts = sorted(diffset.get_scripts_with_differing_blocks(), key=lambda s: (s.side_a_path, s.side_b_path))
+    for script in diffset.get_scripts_with_differing_blocks():
+        if filters is None or filters["script"] is None:
+            scripts.append(script)
+            continue
+
+        if (script.side_a_path is not None and filters["script"] in script.side_a_path.as_posix().lower()) or (
+            script.side_b_path is not None and filters["script"] in script.side_b_path.as_posix().lower()
+        ):
+            scripts.append(script)
+
+    scripts.sort(key=lambda s: (s.side_a_path, s.side_b_path))
 
     for script in scripts:
         blocks = sorted(
@@ -354,13 +396,24 @@ def display_detailed_diff_in_pcode(diffset: GfxDiffSet, sort_order: DiffSortOrde
         )
 
         for block in blocks:
-            if block.is_paired() and block.unified_diff:
+            if not block.is_paired() or not block.unified_diff:
+                continue
+
+            if (
+                filters is None
+                or filters["block"] is None
+                or (block.side_a_name is not None and filters["block"] in block.side_a_name.lower())
+                or (block.side_b_name is not None and filters["block"] in block.side_b_name.lower())
+            ):
                 sorted_pairs.append((script, block))
 
     if sort_order == DiffSortOrder.CHANGES_ASC:
         sorted_pairs.sort(key=lambda p: (p[1].refined_changed, p[1].side_a_name, p[1].side_b_name))
     elif sort_order == DiffSortOrder.CHANGES_DESC:
         sorted_pairs.sort(key=lambda p: (-p[1].refined_changed, p[1].side_a_name, p[1].side_b_name))
+
+    if filters is not None and not sorted_pairs:
+        print_warning("No script or block name matches the provided filters.")
 
     for script, block in sorted_pairs:
         if line_count > 0:
@@ -402,13 +455,25 @@ def display_detailed_diff_in_actionscript(
     diffset: GfxDiffSet,
     sort_order: DiffSortOrder,
     max_lines: int = 0,
+    filters: dict | None = None,
     debug_mode: bool = False,
 ):
     line_count = 0
 
     sorted_pairs: list[tuple[GfxScript, GfxScriptBlock]] = []
+    scripts: list[GfxScript] = []
 
-    scripts = sorted(diffset.get_scripts_with_differing_blocks(), key=lambda s: (s.side_a_path, s.side_b_path))
+    for script in diffset.get_scripts_with_differing_blocks():
+        if filters is None or filters["script"] is None:
+            scripts.append(script)
+            continue
+
+        if (script.side_a_path is not None and filters["script"] in script.side_a_path.as_posix().lower()) or (
+            script.side_b_path is not None and filters["script"] in script.side_b_path.as_posix().lower()
+        ):
+            scripts.append(script)
+
+    scripts.sort(key=lambda s: (s.side_a_path, s.side_b_path))
 
     for script in scripts:
         blocks = sorted(
@@ -417,12 +482,21 @@ def display_detailed_diff_in_actionscript(
         )
 
         for block in blocks:
-            sorted_pairs.append((script, block))
+            if (
+                filters is None
+                or filters["block"] is None
+                or (block.side_a_name is not None and filters["block"] in block.side_a_name.lower())
+                or (block.side_b_name is not None and filters["block"] in block.side_b_name.lower())
+            ):
+                sorted_pairs.append((script, block))
 
     if sort_order == DiffSortOrder.CHANGES_ASC:
         sorted_pairs.sort(key=lambda p: (p[1].refined_changed, p[1].side_a_name or p[1].side_b_name))
     elif sort_order == DiffSortOrder.CHANGES_DESC:
         sorted_pairs.sort(key=lambda p: (-p[1].refined_changed, p[1].side_a_name or p[1].side_b_name))
+
+    if filters is not None and not sorted_pairs:
+        print_warning("No script or block name matches the provided filters.")
 
     # Cache for ActionScript sources.
     actionscript_cache: dict[Path, list[str]] = {}
@@ -750,6 +824,13 @@ def command(
             help="Control sort order for diffs. 'natural' preserves the original order of blocks within each script. 'changes_desc' shows most modified blocks first, 'changes_asc' does the opposite.",
         ),
     ] = DiffSortOrder.CHANGES_DESC,
+    filters: Annotated[
+        str | None,
+        typer.Option(
+            "--filter",
+            help='Filter diff details to only display scripts and/or blocks whose name contains the given value. The matching is case-insensitive. Example: "script=inventory,block=character".',
+        ),
+    ] = None,
     debug_mode: Annotated[bool, typer.Option("--debug", help="Enable debug mode.")] = False,
 ):
     """
@@ -782,6 +863,12 @@ def command(
     try:
         ffdec_path = resolve_ffdec(ffdec_path)
     except FileNotFoundError as e:
+        print_error(e)
+        raise typer.Exit(code=1)
+
+    try:
+        details_filters = parse_and_validate_details_filters(filters)
+    except ValueError as e:
         print_error(e)
         raise typer.Exit(code=1)
 
@@ -902,10 +989,13 @@ def command(
                 diffset,
                 sort_order=sort_order,
                 max_lines=truncate_detailed_diff,
+                filters=details_filters,
                 debug_mode=debug_mode,
             )
         elif diff_format == "pcode":
-            display_detailed_diff_in_pcode(diffset, sort_order=sort_order, max_lines=truncate_detailed_diff)
+            display_detailed_diff_in_pcode(
+                diffset, sort_order=sort_order, max_lines=truncate_detailed_diff, filters=details_filters
+            )
 
     console.line()
     display_summary(diffset, sort_order)
