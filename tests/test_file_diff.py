@@ -8,6 +8,7 @@ from kcd_gfx_toolbox.file_diff import (
     TextHunkLine,
     TextDiff,
     TextDiffSpan,
+    align_hunk_pair_edge_context,
     align_hunk_pairs,
     cut_text_hunks_with_context,
     diff_file_trees,
@@ -1363,6 +1364,309 @@ def test_cut_text_hunks_with_context_with_exceeding_context():
     ]
 
 
+def test_align_hunk_pair_edge_context():
+    hunk_1 = TextHunk(
+        [
+            _hunk_ctx(3, "}"),
+            _hunk_ctx(4, "SetMember"),
+            _hunk_ctx(5, 'Push register2, "GetMoneyForString"'),
+            _hunk_select(6, 'DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {'),
+            _hunk_select(7, 'loc4vs5: Push 0.1, 0.0, register1, "GetMoney"'),
+            _hunk_select(8, "CallMethod"),
+            _hunk_ctx(9, 'Push 1, "Math"'),
+            _hunk_ctx(10, "GetVariable"),
+            _hunk_ctx(11, 'Push "round"'),
+            _hunk_ctx(12, "GetVariable"),
+            _hunk_ctx(13, "Add2"),
+        ]
+    )
+
+    hunk_2 = TextHunk(
+        [
+            _hunk_ctx(4, "If loc02b2"),
+            _hunk_ctx(5, "}"),
+            _hunk_ctx(6, "SetMember"),
+            _hunk_ctx(7, 'Push register2, "GetMoneyForString"'),
+            _hunk_select(8, 'DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {'),
+            _hunk_select(9, 'loc4vs5: Push 0.1, 0.0, register1, "GetMoney"'),
+            _hunk_select(10, "CallMethod"),
+            _hunk_ctx(11, 'Push 1, "Math"'),
+            _hunk_ctx(12, "GetVariable"),
+            _hunk_ctx(13, 'Push "round"'),
+        ]
+    )
+
+    aligned_hunk_1, aligned_hunk_2 = align_hunk_pair_edge_context(hunk_1, hunk_2)
+
+    assert aligned_hunk_1 == TextHunk(
+        [
+            _hunk_ctx(3, "}"),
+            _hunk_ctx(4, "SetMember"),
+            _hunk_ctx(5, 'Push register2, "GetMoneyForString"'),
+            _hunk_select(6, 'DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {'),
+            _hunk_select(7, 'loc4vs5: Push 0.1, 0.0, register1, "GetMoney"'),
+            _hunk_select(8, "CallMethod"),
+            _hunk_ctx(9, 'Push 1, "Math"'),
+            _hunk_ctx(10, "GetVariable"),
+            _hunk_ctx(11, 'Push "round"'),
+        ]
+    )
+
+    assert aligned_hunk_2 == TextHunk(
+        [
+            _hunk_ctx(5, "}"),
+            _hunk_ctx(6, "SetMember"),
+            _hunk_ctx(7, 'Push register2, "GetMoneyForString"'),
+            _hunk_select(8, 'DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {'),
+            _hunk_select(9, 'loc4vs5: Push 0.1, 0.0, register1, "GetMoney"'),
+            _hunk_select(10, "CallMethod"),
+            _hunk_ctx(11, 'Push 1, "Math"'),
+            _hunk_ctx(12, "GetVariable"),
+            _hunk_ctx(13, 'Push "round"'),
+        ]
+    )
+
+
+def test_align_hunk_pair_edge_context_with_empty_hunk():
+    hunk_1 = TextHunk(
+        [
+            _hunk_ctx(3, "}"),
+            _hunk_ctx(4, "SetMember"),
+            _hunk_ctx(5, 'Push register2, "GetMoneyForString"'),
+            _hunk_select(6, 'DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {'),
+            _hunk_select(7, 'loc4vs5: Push 0.1, 0.0, register1, "GetMoney"'),
+            _hunk_select(8, "CallMethod"),
+            _hunk_ctx(9, 'Push 1, "Math"'),
+            _hunk_ctx(10, "GetVariable"),
+            _hunk_ctx(11, 'Push "round"'),
+            _hunk_ctx(12, "GetVariable"),
+            _hunk_ctx(13, "Add2"),
+        ]
+    )
+
+    hunk_2 = TextHunk()
+
+    aligned_hunk_1, aligned_hunk_2 = align_hunk_pair_edge_context(hunk_1, hunk_2)
+
+    assert aligned_hunk_1 == hunk_1
+    assert aligned_hunk_2 == hunk_2
+
+    aligned_hunk_2, aligned_hunk_1 = align_hunk_pair_edge_context(hunk_2, hunk_1)  # reversed
+
+    assert aligned_hunk_1 == hunk_1
+    assert aligned_hunk_2 == hunk_2
+
+    assert align_hunk_pair_edge_context(TextHunk(), TextHunk()) == (TextHunk(), TextHunk())
+
+
+def test_align_hunk_pair_edge_context_without_leading_context():
+    hunk_1 = TextHunk(
+        [
+            _hunk_select(36, "L4: Push register1"),
+            _hunk_ctx(37, 'Push "counter"'),
+            _hunk_ctx(38, "GetMember"),
+            _hunk_select(39, "Push 1"),
+            _hunk_ctx(40, "Subtract2"),
+            _hunk_ctx(41, "SetMember"),
+            _hunk_ctx(42, 'L6: Push "A"'),
+        ]
+    )
+
+    hunk_2 = TextHunk(
+        [
+            _hunk_select(36, "L6: Push register2"),
+            _hunk_ctx(37, 'Push "counter"'),
+            _hunk_ctx(38, "GetMember"),
+            _hunk_select(39, "Push 2"),
+            _hunk_ctx(40, "Subtract2"),
+            _hunk_ctx(41, "SetMember"),
+        ]
+    )
+
+    aligned_hunk_1, aligned_hunk_2 = align_hunk_pair_edge_context(hunk_1, hunk_2)
+
+    assert aligned_hunk_1 == TextHunk(
+        [
+            _hunk_select(36, "L4: Push register1"),
+            _hunk_ctx(37, 'Push "counter"'),
+            _hunk_ctx(38, "GetMember"),
+            _hunk_select(39, "Push 1"),
+            _hunk_ctx(40, "Subtract2"),
+            _hunk_ctx(41, "SetMember"),
+        ]
+    )
+
+    assert aligned_hunk_2 == TextHunk(
+        [
+            _hunk_select(36, "L6: Push register2"),
+            _hunk_ctx(37, 'Push "counter"'),
+            _hunk_ctx(38, "GetMember"),
+            _hunk_select(39, "Push 2"),
+            _hunk_ctx(40, "Subtract2"),
+            _hunk_ctx(41, "SetMember"),
+        ]
+    )
+
+
+def test_align_hunk_pair_edge_context_without_trailing_context():
+    hunk_1 = TextHunk(
+        [
+            _hunk_ctx(37, 'Push "counter"'),
+            _hunk_ctx(38, "GetMember"),
+            _hunk_select(39, "Push 1"),
+            _hunk_ctx(40, "Subtract2"),
+            _hunk_ctx(41, "SetMember"),
+            _hunk_select(42, 'L6: Push "A"'),
+        ]
+    )
+
+    hunk_2 = TextHunk(
+        [
+            _hunk_ctx(35, "Push 9"),
+            _hunk_ctx(36, 'Push "counter"'),
+            _hunk_ctx(37, "GetMember"),
+            _hunk_select(38, "Push 2"),
+            _hunk_ctx(39, "Subtract2"),
+            _hunk_ctx(40, "SetMember"),
+            _hunk_select(41, 'L6: Push "B"'),
+        ]
+    )
+
+    aligned_hunk_1, aligned_hunk_2 = align_hunk_pair_edge_context(hunk_1, hunk_2)
+
+    assert aligned_hunk_1 == TextHunk(
+        [
+            _hunk_ctx(37, 'Push "counter"'),
+            _hunk_ctx(38, "GetMember"),
+            _hunk_select(39, "Push 1"),
+            _hunk_ctx(40, "Subtract2"),
+            _hunk_ctx(41, "SetMember"),
+            _hunk_select(42, 'L6: Push "A"'),
+        ]
+    )
+
+    assert aligned_hunk_2 == TextHunk(
+        [
+            _hunk_ctx(36, 'Push "counter"'),
+            _hunk_ctx(37, "GetMember"),
+            _hunk_select(38, "Push 2"),
+            _hunk_ctx(39, "Subtract2"),
+            _hunk_ctx(40, "SetMember"),
+            _hunk_select(41, 'L6: Push "B"'),
+        ]
+    )
+
+
+def test_align_hunk_pair_edge_context_without_edge_context():
+    hunk_1 = TextHunk(
+        [
+            _hunk_select(36, "L4: Push register1"),
+            _hunk_ctx(37, 'Push "counter"'),
+            _hunk_ctx(38, "GetMember"),
+            _hunk_select(39, "Push 1"),
+            _hunk_ctx(40, "Subtract2"),
+            _hunk_ctx(41, "SetMember"),
+            _hunk_select(42, 'L6: Push "A"'),
+        ]
+    )
+
+    hunk_2 = TextHunk(
+        [
+            _hunk_select(36, "L6: Push register2"),
+            _hunk_ctx(37, 'Push "counter"'),
+            _hunk_ctx(38, "GetMember"),
+            _hunk_select(39, "Push 2"),
+            _hunk_ctx(40, "Subtract2"),
+            _hunk_ctx(41, "SetMember"),
+            _hunk_select(42, 'L6: Push "B"'),
+        ]
+    )
+
+    aligned_hunk_1, aligned_hunk_2 = align_hunk_pair_edge_context(hunk_1, hunk_2)
+
+    assert aligned_hunk_1 == TextHunk(
+        [
+            _hunk_select(36, "L4: Push register1"),
+            _hunk_ctx(37, 'Push "counter"'),
+            _hunk_ctx(38, "GetMember"),
+            _hunk_select(39, "Push 1"),
+            _hunk_ctx(40, "Subtract2"),
+            _hunk_ctx(41, "SetMember"),
+            _hunk_select(42, 'L6: Push "A"'),
+        ]
+    )
+
+    assert aligned_hunk_2 == TextHunk(
+        [
+            _hunk_select(36, "L6: Push register2"),
+            _hunk_ctx(37, 'Push "counter"'),
+            _hunk_ctx(38, "GetMember"),
+            _hunk_select(39, "Push 2"),
+            _hunk_ctx(40, "Subtract2"),
+            _hunk_ctx(41, "SetMember"),
+            _hunk_select(42, 'L6: Push "B"'),
+        ]
+    )
+
+
+def test_align_hunk_pair_edge_context_without_context_at_all():
+    hunk_1 = TextHunk(
+        [
+            _hunk_select(36, "L4: Push register1"),
+            _hunk_select(37, 'Push "counter"'),
+            _hunk_select(38, "GetMember"),
+        ]
+    )
+
+    hunk_2 = TextHunk(
+        [
+            _hunk_select(36, "L6: Push register2"),
+            _hunk_select(37, 'Push "counterino"'),
+            _hunk_select(38, "GetVariable"),
+        ]
+    )
+
+    aligned_hunk_1, aligned_hunk_2 = align_hunk_pair_edge_context(hunk_1, hunk_2)
+
+    assert aligned_hunk_1 == TextHunk(
+        [
+            _hunk_select(36, "L4: Push register1"),
+            _hunk_select(37, 'Push "counter"'),
+            _hunk_select(38, "GetMember"),
+        ]
+    )
+
+    assert aligned_hunk_2 == TextHunk(
+        [
+            _hunk_select(36, "L6: Push register2"),
+            _hunk_select(37, 'Push "counterino"'),
+            _hunk_select(38, "GetVariable"),
+        ]
+    )
+
+
+def test_align_hunk_pair_edge_context_with_context_only():
+    hunk_1 = TextHunk(
+        [
+            _hunk_ctx(21, "loc78f:"),
+            _hunk_ctx(22, "Push -1"),
+            _hunk_ctx(23, "Add2"),
+            _hunk_ctx(24, "Push 0.3"),
+        ]
+    )
+
+    hunk_2 = TextHunk(
+        [
+            _hunk_ctx(10, "loc78f:"),
+            _hunk_ctx(11, "Push -1"),
+            _hunk_ctx(12, "Add2"),
+        ]
+    )
+
+    with pytest.raises(AssertionError):
+        align_hunk_pair_edge_context(hunk_1, hunk_2)
+
+
 def test_align_hunk_pairs():
     hunks_1 = [
         [
@@ -1441,7 +1745,6 @@ def test_align_hunk_pairs():
                 _hunk_select(1, "NewObject"),
                 _hunk_ctx(2, "SetMember"),
                 _hunk_ctx(3, "}"),
-                _hunk_ctx(4, "SetMember"),
             ],
             [
                 _hunk_ctx(0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),

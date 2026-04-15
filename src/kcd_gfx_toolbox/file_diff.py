@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field, replace
 import difflib
 from pathlib import Path
-from typing import NamedTuple, Self
+from typing import Literal, NamedTuple, Self
 import itertools
 from .utils import list_tree_files, read_file_lines, sha256_file
 
@@ -425,6 +425,56 @@ def cut_text_hunks_with_context(
     return merged_hunks
 
 
+def align_hunk_pair_edge_context(hunk_1: TextHunk, hunk_2: TextHunk) -> tuple[TextHunk, TextHunk]:
+    """
+    Trim leading and trailing context lines so their edge context matches.
+    """
+    if len(hunk_1) == 0 or len(hunk_2) == 0:
+        return hunk_1, hunk_2
+
+    def _get_context_region(hnk: TextHunk, edge: Literal["leading", "trailing"]) -> TextHunk:
+        ctx: list[TextHunkLine] = []
+        for ln in hnk if edge == "leading" else reversed(hnk):
+            if not ln.is_context:
+                break
+            ctx.append(ln)
+        return TextHunk(ctx if edge == "leading" else reversed(ctx))
+
+    # Get the start indexes of the common leading context.
+    leading_context_1: TextHunk = _get_context_region(hunk_1, "leading")
+    leading_context_2: TextHunk = _get_context_region(hunk_2, "leading")
+
+    assert len(leading_context_1) < len(hunk_1) and len(leading_context_2) < len(hunk_2), (
+        "Hunks must contain at least one non-context line!"
+    )
+
+    a_first_index = hunk_1[0].index
+    b_first_index = hunk_2[0].index
+
+    for ln_1, ln_2 in zip(reversed(leading_context_1), reversed(leading_context_2)):
+        if ln_1.text != ln_2.text:
+            break
+        a_first_index = ln_1.index
+        b_first_index = ln_2.index
+
+    # Get the end indexes of the common trailing context.
+    trailing_context_1: TextHunk = _get_context_region(hunk_1, "trailing")
+    trailing_context_2: TextHunk = _get_context_region(hunk_2, "trailing")
+    a_last_index = hunk_1[-1].index
+    b_last_index = hunk_2[-1].index
+
+    for ln_1, ln_2 in zip(trailing_context_1, trailing_context_2):
+        if ln_1.text != ln_2.text:
+            break
+        a_last_index = ln_1.index
+        b_last_index = ln_2.index
+
+    return (
+        TextHunk([ln for ln in hunk_1 if a_first_index <= ln.index <= a_last_index]),
+        TextHunk([ln for ln in hunk_2 if b_first_index <= ln.index <= b_last_index]),
+    )
+
+
 def align_hunk_pairs(hunks_1: list[TextHunk], hunks_2: list[TextHunk]) -> list[tuple[TextHunk, TextHunk]]:
     """
     Align two lists of text hunks by pairing similar hunks together. Order is preserved.
@@ -453,7 +503,7 @@ def align_hunk_pairs(hunks_1: list[TextHunk], hunks_2: list[TextHunk]) -> list[t
         elif tag == "delete":
             hunk_pairs.append((_flatten_hunk_list(hunks_1[i1:i2]), TextHunk()))
 
-    return hunk_pairs
+    return [align_hunk_pair_edge_context(h1, h2) for h1, h2 in hunk_pairs]
 
 
 def hunks_are_equal(hunk_1: TextHunk | DiffHunk, hunk_2: TextHunk | DiffHunk) -> bool:
