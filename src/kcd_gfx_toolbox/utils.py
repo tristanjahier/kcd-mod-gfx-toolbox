@@ -21,7 +21,7 @@ def print_error(message: str | BaseException):
     if isinstance(message, BaseException):
         message = escape(str(message))
 
-    stderr_console.print(f"ERROR: {message}", style="bold red")
+    stderr_console.print(f"ERROR: {message}", style="bold red", highlight=False)
 
 
 def print_warning(message: str | BaseException):
@@ -31,7 +31,7 @@ def print_warning(message: str | BaseException):
     if isinstance(message, BaseException):
         message = escape(str(message))
 
-    stderr_console.print(f"WARNING: {message}", style="bold yellow")
+    stderr_console.print(f"WARNING: {message}", style="bold yellow", highlight=False)
 
 
 def list_tree_files(path: Path, glob: str | None = None) -> set[Path]:
