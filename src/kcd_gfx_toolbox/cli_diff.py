@@ -398,14 +398,11 @@ def display_detailed_diff_in_pcode(
 
     for script in scripts:
         blocks = sorted(
-            diffset.paired_scripts_block_diffs[script].paired_blocks,
-            key=lambda b: (b.position, b.side_a_name, b.side_b_name),
+            diffset.paired_scripts_block_diffs[script].get_differing_blocks(),
+            key=lambda b: (b.position, b.side_a_name or b.side_b_name),
         )
 
         for block in blocks:
-            if not block.is_paired():
-                continue
-
             if (
                 filters is None
                 or filters["block"] is None
@@ -415,9 +412,9 @@ def display_detailed_diff_in_pcode(
                 sorted_pairs.append((script, block))
 
     if sort_order == DiffSortOrder.CHANGES_ASC:
-        sorted_pairs.sort(key=lambda p: (p[1].refined_changed, p[1].side_a_name, p[1].side_b_name))
+        sorted_pairs.sort(key=lambda p: (p[1].refined_changed, p[1].side_a_name or p[1].side_b_name))
     elif sort_order == DiffSortOrder.CHANGES_DESC:
-        sorted_pairs.sort(key=lambda p: (-p[1].refined_changed, p[1].side_a_name, p[1].side_b_name))
+        sorted_pairs.sort(key=lambda p: (-p[1].refined_changed, p[1].side_a_name or p[1].side_b_name))
 
     if filters is not None and not sorted_pairs:
         print_warning("No script or block name matches the provided filters.")
@@ -435,8 +432,8 @@ def display_detailed_diff_in_pcode(
         block_side_a = next((b for b in script_a_blocks if b.name == block.side_a_name), None)
         block_side_b = next((b for b in script_b_blocks if b.name == block.side_b_name), None)
 
-        block_a_lines = [ln.render() for ln in block_side_a.lines]
-        block_b_lines = [ln.render() for ln in block_side_b.lines]
+        block_a_lines = [ln.render() for ln in block_side_a.lines] if block_side_a else []
+        block_b_lines = [ln.render() for ln in block_side_b.lines] if block_side_b else []
         block_b_lines = align_labels_in_text(block_b_lines, anchor_lines=block_a_lines)
         block_b_lines = align_registers_in_text(block_b_lines, anchor_lines=block_a_lines)
 
@@ -450,10 +447,16 @@ def display_detailed_diff_in_pcode(
                 return
 
             if line.startswith("---"):
-                line = f"--- a/{script.side_a_path.as_posix()}:{block.side_a_name}"
+                if block.side_a_name is None:
+                    line = "--- dev/null"
+                else:
+                    line = f"--- a/{script.side_a_path.as_posix()}:{block.side_a_name}"
                 console.print(f"[bold]{escape(line)}[/bold]", highlight=False)
             elif line.startswith("+++"):
-                line = f"+++ b/{script.side_b_path.as_posix()}:{block.side_b_name}"
+                if block.side_b_name is None:
+                    line = "+++ dev/null"
+                else:
+                    line = f"+++ b/{script.side_b_path.as_posix()}:{block.side_b_name}"
                 console.print(f"[bold]{escape(line)}[/bold]", highlight=False)
             elif line.startswith("@@"):
                 console.print(f"[cyan]{escape(line)}[/cyan]", highlight=False)
