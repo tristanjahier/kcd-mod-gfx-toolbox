@@ -7,6 +7,7 @@ from typing import Annotated, Literal, cast
 import typer
 
 from .workspace import Workspace, temp_workspace_name_for_file
+from .avm1.pcode_alignment import align_labels_in_text, align_registers_in_text
 from .avm1.pcode_parsing import PcodeBlock, PcodeLine, merge_pcode_lines_sources, parse_pcode_file
 from .swd import (
     build_pcode_to_actionscript_line_map,
@@ -35,6 +36,7 @@ from .file_diff import (
     diff_file_trees_basic,
     diff_text_hunks,
     hunks_are_equal,
+    unified_diff,
 )
 from .utils import (
     console,
@@ -367,7 +369,12 @@ def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table, sort_order: D
 
 
 def display_detailed_diff_in_pcode(
-    diffset: GfxDiffSet, sort_order: DiffSortOrder, max_lines: int = 0, filters: dict | None = None
+    diffset: GfxDiffSet,
+    normalized_script_blocks_a: dict[Path, list[PcodeBlock]],
+    normalized_script_blocks_b: dict[Path, list[PcodeBlock]],
+    sort_order: DiffSortOrder,
+    max_lines: int = 0,
+    filters: dict | None = None,
 ):
     """
     Display line-by-line differences for each modified script block.
@@ -396,7 +403,7 @@ def display_detailed_diff_in_pcode(
         )
 
         for block in blocks:
-            if not block.is_paired() or not block.unified_diff:
+            if not block.is_paired():
                 continue
 
             if (
@@ -416,11 +423,24 @@ def display_detailed_diff_in_pcode(
         print_warning("No script or block name matches the provided filters.")
 
     for script, block in sorted_pairs:
+        assert script.side_a_path is not None  # type guard for static analyzers
+        assert script.side_b_path is not None
+
         if line_count > 0:
             console.line()
             line_count += 1
 
-        for line in block.unified_diff:
+        script_a_blocks = normalized_script_blocks_a.get(script.side_a_path, [])
+        script_b_blocks = normalized_script_blocks_b.get(script.side_b_path, [])
+        block_side_a = next((b for b in script_a_blocks if b.name == block.side_a_name), None)
+        block_side_b = next((b for b in script_b_blocks if b.name == block.side_b_name), None)
+
+        block_a_lines = [ln.render() for ln in block_side_a.lines]
+        block_b_lines = [ln.render() for ln in block_side_b.lines]
+        block_b_lines = align_labels_in_text(block_b_lines, anchor_lines=block_a_lines)
+        block_b_lines = align_registers_in_text(block_b_lines, anchor_lines=block_a_lines)
+
+        for line in unified_diff(block_a_lines, block_b_lines):
             line = line.rstrip("\n")
 
             if max_lines != 0 and line_count >= max_lines:
@@ -998,7 +1018,12 @@ def command(
             )
         elif diff_format == "pcode":
             display_detailed_diff_in_pcode(
-                diffset, sort_order=sort_order, max_lines=truncate_detailed_diff, filters=details_filters
+                diffset,
+                normalized_script_blocks_a,
+                normalized_script_blocks_b,
+                sort_order=sort_order,
+                max_lines=truncate_detailed_diff,
+                filters=details_filters,
             )
 
     if not hide_summary:

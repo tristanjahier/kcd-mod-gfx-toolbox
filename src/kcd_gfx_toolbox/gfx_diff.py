@@ -1,6 +1,5 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from difflib import unified_diff
 from enum import StrEnum
 from pathlib import Path
 from typing import cast
@@ -130,7 +129,6 @@ class GfxScriptBlock:
     changed: int = field(default=0, compare=False)
     diff_spans: list[TextDiffSpan] = field(default_factory=list, compare=False)
     refined_changed: int = field(default=0, compare=False)
-    unified_diff: list[str] = field(default_factory=list, compare=False)
 
     def __post_init__(self):
         if self.side_a_name is None and self.side_b_name is None:
@@ -277,7 +275,6 @@ def refine_block_diffs(diffset: GfxDiffSet, normalization_dir_a: Path, normaliza
             block_b = align_registers_in_text(block_b, anchor_lines=block_a)
             text_diff = diff_texts(block_a, block_b)
             block.refined_changed = text_diff.lines_changed
-            block.unified_diff = list(unified_diff(block_a, block_b))
 
     return diffset
 
