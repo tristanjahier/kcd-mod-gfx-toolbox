@@ -368,20 +368,13 @@ def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table, sort_order: D
         _render_node(child, is_last_child=is_last)
 
 
-def display_detailed_diff_in_pcode(
-    diffset: GfxDiffSet,
-    normalized_script_blocks_a: dict[Path, list[PcodeBlock]],
-    normalized_script_blocks_b: dict[Path, list[PcodeBlock]],
-    sort_order: DiffSortOrder,
-    max_lines: int = 0,
-    filters: dict | None = None,
-):
+def get_sorted_and_filtered_script_block_pairs(
+    diffset: GfxDiffSet, sort_order: DiffSortOrder, filters: dict | None = None
+) -> list[tuple[GfxScript, GfxScriptBlock]]:
     """
-    Display line-by-line differences for each modified script block.
+    List pairs of differing scripts and blocks, applying desired filters and sorting.
     """
-    line_count = 0
-
-    sorted_pairs: list[tuple[GfxScript, GfxScriptBlock]] = []
+    pairs: list[tuple[GfxScript, GfxScriptBlock]] = []
     scripts: list[GfxScript] = []
 
     for script in diffset.get_scripts_with_differing_blocks():
@@ -409,12 +402,30 @@ def display_detailed_diff_in_pcode(
                 or (block.side_a_name is not None and filters["block"] in block.side_a_name.lower())
                 or (block.side_b_name is not None and filters["block"] in block.side_b_name.lower())
             ):
-                sorted_pairs.append((script, block))
+                pairs.append((script, block))
 
     if sort_order == DiffSortOrder.CHANGES_ASC:
-        sorted_pairs.sort(key=lambda p: (p[1].refined_changed, p[1].side_a_name or p[1].side_b_name))
+        pairs.sort(key=lambda p: (p[1].refined_changed, p[1].side_a_name or p[1].side_b_name))
     elif sort_order == DiffSortOrder.CHANGES_DESC:
-        sorted_pairs.sort(key=lambda p: (-p[1].refined_changed, p[1].side_a_name or p[1].side_b_name))
+        pairs.sort(key=lambda p: (-p[1].refined_changed, p[1].side_a_name or p[1].side_b_name))
+
+    return pairs
+
+
+def display_detailed_diff_in_pcode(
+    diffset: GfxDiffSet,
+    normalized_script_blocks_a: dict[Path, list[PcodeBlock]],
+    normalized_script_blocks_b: dict[Path, list[PcodeBlock]],
+    sort_order: DiffSortOrder,
+    max_lines: int = 0,
+    filters: dict | None = None,
+):
+    """
+    Display line-by-line differences for each modified script block.
+    """
+    line_count = 0
+
+    sorted_pairs = get_sorted_and_filtered_script_block_pairs(diffset, sort_order, filters)
 
     if filters is not None and not sorted_pairs:
         print_warning("No script or block name matches the provided filters.")
@@ -483,40 +494,7 @@ def display_detailed_diff_in_actionscript(
 ):
     line_count = 0
 
-    sorted_pairs: list[tuple[GfxScript, GfxScriptBlock]] = []
-    scripts: list[GfxScript] = []
-
-    for script in diffset.get_scripts_with_differing_blocks():
-        if filters is None or filters["script"] is None:
-            scripts.append(script)
-            continue
-
-        if (script.side_a_path is not None and filters["script"] in script.side_a_path.as_posix().lower()) or (
-            script.side_b_path is not None and filters["script"] in script.side_b_path.as_posix().lower()
-        ):
-            scripts.append(script)
-
-    scripts.sort(key=lambda s: (s.side_a_path, s.side_b_path))
-
-    for script in scripts:
-        blocks = sorted(
-            diffset.paired_scripts_block_diffs[script].get_differing_blocks(),
-            key=lambda b: (b.position, b.side_a_name or b.side_b_name),
-        )
-
-        for block in blocks:
-            if (
-                filters is None
-                or filters["block"] is None
-                or (block.side_a_name is not None and filters["block"] in block.side_a_name.lower())
-                or (block.side_b_name is not None and filters["block"] in block.side_b_name.lower())
-            ):
-                sorted_pairs.append((script, block))
-
-    if sort_order == DiffSortOrder.CHANGES_ASC:
-        sorted_pairs.sort(key=lambda p: (p[1].refined_changed, p[1].side_a_name or p[1].side_b_name))
-    elif sort_order == DiffSortOrder.CHANGES_DESC:
-        sorted_pairs.sort(key=lambda p: (-p[1].refined_changed, p[1].side_a_name or p[1].side_b_name))
+    sorted_pairs = get_sorted_and_filtered_script_block_pairs(diffset, sort_order, filters)
 
     if filters is not None and not sorted_pairs:
         print_warning("No script or block name matches the provided filters.")
