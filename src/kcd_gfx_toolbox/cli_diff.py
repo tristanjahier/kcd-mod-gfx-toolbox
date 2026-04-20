@@ -521,11 +521,11 @@ def display_detailed_diff_in_actionscript(
         raise typer.Exit(code=1)
 
     file_a_pcode_to_as_line_map = build_pcode_to_actionscript_line_map(
-        file_a_swd_pcode, file_a_swd_as, {script.side_a_path.as_posix() for script in scripts}
+        file_a_swd_pcode, file_a_swd_as, {script.side_a_path.as_posix() for script, _ in sorted_pairs}
     )
 
     file_b_pcode_to_as_line_map = build_pcode_to_actionscript_line_map(
-        file_b_swd_pcode, file_b_swd_as, {script.side_b_path.as_posix() for script in scripts}
+        file_b_swd_pcode, file_b_swd_as, {script.side_b_path.as_posix() for script, _ in sorted_pairs}
     )
 
     context_first_block_diff_display = True
