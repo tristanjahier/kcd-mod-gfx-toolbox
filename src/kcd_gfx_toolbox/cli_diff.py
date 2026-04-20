@@ -271,26 +271,16 @@ def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table, sort_order: D
 
     def _node_sort_key(n: GfxDiffTreeNode):
         if n.type == GfxDiffTreeNodeType.DIRECTORY:
-            return cast(str, n.value)
+            return (0, cast(str, n.value))
         elif n.type == GfxDiffTreeNodeType.SCRIPT:
-            script = cast(GfxScript, n.value)
-            return (
-                f"{script.side_a_path}|{script.side_b_path}"
-                if script.is_paired()
-                else str(script.side_a_path or script.side_b_path)
-            )
+            return (1, cast(GfxScript, n.value).path_sort_key())
         elif n.type == GfxDiffTreeNodeType.SCRIPT_BLOCK:
             block = cast(GfxScriptBlock, n.value)
-            block_name_key = (
-                f"{block.side_a_name}|{block.side_b_name}"
-                if block.is_paired()
-                else str(block.side_a_name or block.side_b_name)
-            )
             if sort_order == DiffSortOrder.NATURAL:
-                return (block.position, block_name_key)
+                return (2, block.position, block.name_sort_key())
             elif sort_order == DiffSortOrder.CHANGES_ASC:
-                return (block.refined_changed, block_name_key)
-            return (-block.refined_changed, block_name_key)
+                return (2, block.refined_changed, block.name_sort_key())
+            return (2, -block.refined_changed, block.name_sort_key())
         assert False, "must never reach this code."
 
     def _render_node(node: GfxDiffTreeNode, line_prefix: str = "", depth: int = 0, is_last_child: bool = False):
@@ -387,12 +377,12 @@ def get_sorted_and_filtered_script_block_pairs(
         ):
             scripts.append(script)
 
-    scripts.sort(key=lambda s: (s.side_a_path, s.side_b_path))
+    scripts.sort(key=lambda s: s.path_sort_key())
 
     for script in scripts:
         blocks = sorted(
             diffset.paired_scripts_block_diffs[script].get_differing_blocks(),
-            key=lambda b: (b.position, b.side_a_name or b.side_b_name),
+            key=lambda b: (b.position, b.name_sort_key()),
         )
 
         for block in blocks:
@@ -405,9 +395,9 @@ def get_sorted_and_filtered_script_block_pairs(
                 pairs.append((script, block))
 
     if sort_order == DiffSortOrder.CHANGES_ASC:
-        pairs.sort(key=lambda p: (p[1].refined_changed, p[1].side_a_name or p[1].side_b_name))
+        pairs.sort(key=lambda p: (p[1].refined_changed, p[1].name_sort_key()))
     elif sort_order == DiffSortOrder.CHANGES_DESC:
-        pairs.sort(key=lambda p: (-p[1].refined_changed, p[1].side_a_name or p[1].side_b_name))
+        pairs.sort(key=lambda p: (-p[1].refined_changed, p[1].name_sort_key()))
 
     return pairs
 
