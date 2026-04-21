@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 import difflib
 from pathlib import Path
@@ -236,9 +237,9 @@ def diff_file_trees(
     return changes, sorted(unmatched_dir1), sorted(unmatched_dir2), equals
 
 
-def unified_diff(lines_1: list[str], lines_2: list[str]) -> list[str]:
+def unified_diff(lines_1: list[str], lines_2: list[str]) -> Iterator[str]:
     """Compare two sets of text lines and return the unified diff hunk lines."""
-    return list(difflib.unified_diff(lines_1, lines_2))
+    return difflib.unified_diff(lines_1, lines_2)
 
 
 def format_path_rename_git_style(path_a: Path, path_b: Path | None) -> str:

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from __future__ import annotations
+from collections.abc import Iterable, Iterator
 from enum import StrEnum
 import json
 from typing import Annotated, Literal, cast
@@ -402,6 +403,33 @@ def get_sorted_and_filtered_script_block_pairs(
     return pairs
 
 
+def format_unified_diff_lines(lines: Iterable[str], script: GfxScript, block: GfxScriptBlock) -> Iterator[str]:
+    """Format unified diff lines for console output via Rich markup."""
+    for line in lines:
+        line = line.rstrip("\n")
+
+        if line.startswith("---"):
+            if block.side_a_name is None:
+                line = "--- /dev/null"
+            else:
+                line = f"--- a/{script.side_a_path.as_posix()}:{block.side_a_name}"
+            yield f"[bold]{escape(line)}[/bold]"
+        elif line.startswith("+++"):
+            if block.side_b_name is None:
+                line = "+++ /dev/null"
+            else:
+                line = f"+++ b/{script.side_b_path.as_posix()}:{block.side_b_name}"
+            yield f"[bold]{escape(line)}[/bold]"
+        elif line.startswith("@@"):
+            yield f"[cyan]{escape(line)}[/cyan]"
+        elif line.startswith("+"):
+            yield f"[green]{escape(line)}[/green]"
+        elif line.startswith("-"):
+            yield f"[red]{escape(line)}[/red]"
+        else:
+            yield escape(line)
+
+
 def display_detailed_diff_in_pcode(
     diffset: GfxDiffSet,
     normalized_script_blocks_a: dict[Path, list[PcodeBlock]],
@@ -438,36 +466,14 @@ def display_detailed_diff_in_pcode(
         block_b_lines = align_labels_in_text(block_b_lines, anchor_lines=block_a_lines)
         block_b_lines = align_registers_in_text(block_b_lines, anchor_lines=block_a_lines)
 
-        for line in unified_diff(block_a_lines, block_b_lines):
-            line = line.rstrip("\n")
-
+        for line in format_unified_diff_lines(unified_diff(block_a_lines, block_b_lines), script, block):
             if max_lines != 0 and line_count >= max_lines:
                 console.print(
                     f"[bold yellow]---- Diff details truncated at {line_count} lines. Use [italic]--details-truncate=0[/italic] to remove this limit. ----[/bold yellow]"
                 )
                 return
 
-            if line.startswith("---"):
-                if block.side_a_name is None:
-                    line = "--- dev/null"
-                else:
-                    line = f"--- a/{script.side_a_path.as_posix()}:{block.side_a_name}"
-                console.print(f"[bold]{escape(line)}[/bold]", highlight=False)
-            elif line.startswith("+++"):
-                if block.side_b_name is None:
-                    line = "+++ dev/null"
-                else:
-                    line = f"+++ b/{script.side_b_path.as_posix()}:{block.side_b_name}"
-                console.print(f"[bold]{escape(line)}[/bold]", highlight=False)
-            elif line.startswith("@@"):
-                console.print(f"[cyan]{escape(line)}[/cyan]", highlight=False)
-            elif line.startswith("+"):
-                console.print(f"[green]{escape(line)}[/green]", highlight=False)
-            elif line.startswith("-"):
-                console.print(f"[red]{escape(line)}[/red]", highlight=False)
-            else:
-                console.print(escape(line), highlight=False)
-
+            console.print(line, highlight=False)
             line_count += 1
 
 
