@@ -29,11 +29,11 @@ class GfxScript:
     def was_renamed(self) -> bool:
         return self.is_paired() and self.side_a_path != self.side_b_path
 
-    def path_sort_key(self) -> tuple[str, ...]:
-        if self.is_paired():
-            return (self.side_a_path.as_posix(), self.side_b_path.as_posix())
-
-        return ((self.side_a_path or self.side_b_path).as_posix(),)
+    def path_sort_key(self) -> tuple[str, str]:
+        return (
+            self.side_a_path.as_posix() if self.side_a_path else "",
+            self.side_b_path.as_posix() if self.side_b_path else "",
+        )
 
     def __repr__(self):
         if self.side_a_path is None:
@@ -146,11 +146,8 @@ class GfxScriptBlock:
     def was_renamed(self) -> bool:
         return self.is_paired() and self.side_a_name != self.side_b_name
 
-    def name_sort_key(self) -> tuple[str, ...]:
-        if self.is_paired():
-            return (self.side_a_name, self.side_b_name)
-
-        return (self.side_a_name or self.side_b_name,)
+    def name_sort_key(self) -> tuple[str, str]:
+        return (self.side_a_name or "", self.side_b_name or "")
 
 
 class ScriptDiffSet:
