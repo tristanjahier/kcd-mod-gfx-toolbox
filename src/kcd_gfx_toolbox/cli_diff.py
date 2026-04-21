@@ -395,9 +395,9 @@ def get_sorted_and_filtered_script_block_pairs(
                 pairs.append((script, block))
 
     if sort_order == DiffSortOrder.CHANGES_ASC:
-        pairs.sort(key=lambda p: (p[1].refined_changed, p[1].name_sort_key()))
+        pairs.sort(key=lambda p: (p[1].refined_changed, p[0].path_sort_key(), p[1].name_sort_key()))
     elif sort_order == DiffSortOrder.CHANGES_DESC:
-        pairs.sort(key=lambda p: (-p[1].refined_changed, p[1].name_sort_key()))
+        pairs.sort(key=lambda p: (-p[1].refined_changed, p[0].path_sort_key(), p[1].name_sort_key()))
 
     return pairs
 
