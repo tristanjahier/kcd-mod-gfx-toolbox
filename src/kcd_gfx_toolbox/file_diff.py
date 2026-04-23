@@ -337,6 +337,9 @@ class TextHunkLine:
 class TextHunk(list[TextHunkLine]):
     """An ordered sequence of TextHunkLine representing a contiguous hunk of text."""
 
+    def to_str_list(self) -> list[str]:
+        return [ln.text for ln in self]
+
     def __repr__(self) -> str:
         line_padding = max((len(str(line.index)) for line in self), default=0)
         return "\n".join(ln.debug_repr(line_padding) for ln in self)
