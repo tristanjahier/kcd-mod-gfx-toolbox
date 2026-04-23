@@ -16,7 +16,7 @@ from .swd import (
     parse_swd_file,
     propagate_mapped_lines_to_subsequent_unmapped_lines,
 )
-from .gfx_diff import (
+from .diff.gfx import (
     GfxDiffSet,
     GfxDiffTreeNode,
     GfxDiffTreeNodeType,
@@ -30,7 +30,7 @@ from .extraction import (
     resolve_ffdec,
 )
 from .avm1.pcode_normalization import NormalizationResult, normalize_file
-from .file_diff import (
+from .diff.core import (
     DiffHunk,
     TextHunk,
     align_hunk_pairs,
@@ -48,7 +48,7 @@ from .utils import (
     print_warning,
     read_file_lines,
 )
-from .split_diff_view import SplitDiffView, SplitDiffViewMessagePane
+from .diff.split_layout import SplitLayout, SplitLayoutMessagePane
 from pathlib import Path
 import shutil
 import subprocess
@@ -467,14 +467,14 @@ def display_block_diff_in_split_layout(
         if debug_mode and block.is_paired() and block_info.corpus == "actionscript" and hunks_are_equal(hunk_a, hunk_b):
             print_warning("Different p-code, same ActionScript.")
 
-        side_a: DiffHunk | SplitDiffViewMessagePane
-        side_b: DiffHunk | SplitDiffViewMessagePane
+        side_a: DiffHunk | SplitLayoutMessagePane
+        side_b: DiffHunk | SplitLayoutMessagePane
 
         if block.is_paired():
             if block_info.side_a_resolved and block_info.side_b_resolved:
                 side_a, side_b = diff_text_hunks(hunk_a, hunk_b)
             elif not block_info.side_a_resolved:
-                side_a = SplitDiffViewMessagePane(
+                side_a = SplitLayoutMessagePane(
                     "[yellow]Unable to map pcode lines to ActionScript source on this side.[/yellow]"
                 )
                 side_b = DiffHunk.wrap(
@@ -484,23 +484,23 @@ def display_block_diff_in_split_layout(
                 side_a = DiffHunk.wrap(
                     TextHunk([(ln.reannotate(is_deletion=True) if not ln.is_context else ln) for ln in hunk_a])
                 )
-                side_b = SplitDiffViewMessagePane(
+                side_b = SplitLayoutMessagePane(
                     "[yellow]Unable to map pcode lines to ActionScript source on this side.[/yellow]"
                 )
         else:
             if block.side_a_name is None:
-                side_a = SplitDiffViewMessagePane("[dim]This block does not exist on side A.[/dim]")
+                side_a = SplitLayoutMessagePane("[dim]This block does not exist on side A.[/dim]")
                 _, side_b = diff_text_hunks(TextHunk(), hunk_b)
             else:
                 side_a, _ = diff_text_hunks(hunk_a, TextHunk())
-                side_b = SplitDiffViewMessagePane("[dim]This block does not exist on side B.[/dim]")
+                side_b = SplitLayoutMessagePane("[dim]This block does not exist on side B.[/dim]")
 
         syntax_lexer: Lexer | None = None
 
         if block_info.corpus == "actionscript":
             syntax_lexer = ActionScriptLexer()
 
-        diff_view = SplitDiffView.from_pair(side_a, side_b, syntax_lexer=syntax_lexer, word_wrap=True)
+        diff_view = SplitLayout.from_pair(side_a, side_b, syntax_lexer=syntax_lexer, word_wrap=True)
 
         console.line()
         console.print(diff_view)

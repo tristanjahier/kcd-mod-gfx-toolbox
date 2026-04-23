@@ -1,3 +1,5 @@
+"""Side-by-side diff rendering using Rich."""
+
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from itertools import zip_longest
@@ -13,7 +15,7 @@ from pygments.style import Style as PygmentsStyle
 from pygments.styles.material import MaterialStyle as DefaultPygmentStyle
 from pygments import lex as pygments_lex
 
-from .file_diff import DiffHunk, TextHunkLine
+from .core import DiffHunk, TextHunkLine
 
 
 def _highlight_line(line: str, lexer: Lexer, pygments_style: type[PygmentsStyle]) -> Text:
@@ -46,7 +48,7 @@ def _highlight_line(line: str, lexer: Lexer, pygments_style: type[PygmentsStyle]
     return rich_text
 
 
-class SplitDiffViewPane(ABC):
+class SplitLayoutPane(ABC):
     @abstractmethod
     def compute_height(self, console: Console, pane_width: int) -> int: ...
 
@@ -54,8 +56,8 @@ class SplitDiffViewPane(ABC):
     def render(self, vertical_gap: int | None = None) -> RenderableType: ...
 
 
-class SplitDiffView:
-    def __init__(self, left_pane: SplitDiffViewPane, right_pane: SplitDiffViewPane, spacing: int = 1):
+class SplitLayout:
+    def __init__(self, left_pane: SplitLayoutPane, right_pane: SplitLayoutPane, spacing: int = 1):
         self.left_pane = left_pane
         self.right_pane = right_pane
         self.spacing = spacing
@@ -82,13 +84,13 @@ class SplitDiffView:
 
         left_pane_width, right_pane_width = self._compute_pane_widths(options.max_width)
 
-        if isinstance(self.left_pane, SplitDiffViewCodePane) and isinstance(self.right_pane, SplitDiffViewCodePane):
-            SplitDiffViewCodePane.render_table_rows_in_pair(
+        if isinstance(self.left_pane, SplitLayoutCodePane) and isinstance(self.right_pane, SplitLayoutCodePane):
+            SplitLayoutCodePane.render_table_rows_in_pair(
                 self.left_pane, self.right_pane, console, left_pane_width, right_pane_width
             )
-        elif isinstance(self.left_pane, SplitDiffViewCodePane):
+        elif isinstance(self.left_pane, SplitLayoutCodePane):
             self.left_pane.render_table_rows()
-        elif isinstance(self.right_pane, SplitDiffViewCodePane):
+        elif isinstance(self.right_pane, SplitLayoutCodePane):
             self.right_pane.render_table_rows()
 
         left_height = self.left_pane.compute_height(console, left_pane_width)
@@ -107,24 +109,24 @@ class SplitDiffView:
     @classmethod
     def from_pair(
         cls,
-        left: DiffHunk | SplitDiffViewMessagePane,
-        right: DiffHunk | SplitDiffViewMessagePane,
+        left: DiffHunk | SplitLayoutMessagePane,
+        right: DiffHunk | SplitLayoutMessagePane,
         **kwargs,
     ) -> Self:
-        if not isinstance(left, SplitDiffViewMessagePane):
-            left_pane = SplitDiffViewCodePane(left, **kwargs)
+        if not isinstance(left, SplitLayoutMessagePane):
+            left_pane = SplitLayoutCodePane(left, **kwargs)
         else:
             left_pane = left
 
-        if not isinstance(right, SplitDiffViewMessagePane):
-            right_pane = SplitDiffViewCodePane(right, **kwargs)
+        if not isinstance(right, SplitLayoutMessagePane):
+            right_pane = SplitLayoutCodePane(right, **kwargs)
         else:
             right_pane = right
 
         return cls(left_pane, right_pane)
 
 
-class SplitDiffViewCodePane(SplitDiffViewPane):
+class SplitLayoutCodePane(SplitLayoutPane):
     def __init__(
         self,
         diff_hunk: DiffHunk,
@@ -269,7 +271,7 @@ class SplitDiffViewCodePane(SplitDiffViewPane):
         yield self.render()
 
 
-class SplitDiffViewMessagePane(SplitDiffViewPane):
+class SplitLayoutMessagePane(SplitLayoutPane):
     def __init__(self, message: str, background_color: str | None = "#17171a", padding: PaddingDimensions = (1, 2)):
         self.message = message
         self.background_color = background_color

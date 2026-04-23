@@ -1,7 +1,7 @@
 import re
 import pytest
 from pathlib import Path
-from kcd_gfx_toolbox.file_diff import (
+from kcd_gfx_toolbox.diff.core import (
     DiffHunk,
     FileDiff,
     TextHunk,

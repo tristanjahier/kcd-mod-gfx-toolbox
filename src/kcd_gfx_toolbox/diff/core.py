@@ -1,10 +1,12 @@
+"""Generic text and file diff primitives, with no knowledge of GFx."""
+
 from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 import difflib
 from pathlib import Path
 from typing import Literal, NamedTuple, Self
 import itertools
-from .utils import list_tree_files, read_file_lines, sha256_file
+from kcd_gfx_toolbox.utils import list_tree_files, read_file_lines, sha256_file
 
 
 class TextDiffSpan(NamedTuple):
