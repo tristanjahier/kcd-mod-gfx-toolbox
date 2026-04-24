@@ -1,21 +1,12 @@
 #!/usr/bin/env python3
 
 from __future__ import annotations
-from collections.abc import Iterable, Iterator
-from dataclasses import dataclass
-from enum import StrEnum
 import json
 from typing import Annotated, Literal, cast
 import typer
 
 from .workspace import Workspace, temp_workspace_name_for_file
-from .avm1.pcode_alignment import align_labels_in_text, align_registers_in_text
-from .avm1.pcode_parsing import PcodeBlock, PcodeLine, merge_pcode_lines_sources, parse_pcode_file
-from .swd import (
-    build_pcode_to_actionscript_line_map,
-    parse_swd_file,
-    propagate_mapped_lines_to_subsequent_unmapped_lines,
-)
+from .avm1.pcode_parsing import PcodeBlock, PcodeLine, parse_pcode_file
 from .diff.gfx import (
     GfxDiffSet,
     GfxDiffTreeNode,
@@ -25,30 +16,31 @@ from .diff.gfx import (
     diff_normalized_script_trees,
     refine_block_diffs,
 )
+from .diff.rendering import (
+    DiffFilter,
+    DiffLayout,
+    RenderableBlockDiff,
+    DiffSortOrder,
+    build_split_layout_for_hunk_pair,
+    build_unified_layout_for_hunk_pair,
+    prepare_diffset_actionscript_render,
+    prepare_diffset_pcode_render,
+)
 from .extraction import (
     extract_gfx_contents,
     resolve_ffdec,
 )
 from .avm1.pcode_normalization import NormalizationResult, normalize_file
 from .diff.core import (
-    DiffHunk,
-    TextHunk,
-    align_hunk_pairs,
-    cut_text_hunks_with_context,
     diff_file_trees_basic,
-    diff_text_hunks,
-    diff_texts,
     hunks_are_equal,
-    unified_diff,
 )
 from .utils import (
     console,
     ensure_empty_dir,
     print_error,
     print_warning,
-    read_file_lines,
 )
-from .diff.split_layout import SplitLayout, SplitLayoutMessagePane
 from pathlib import Path
 import shutil
 import subprocess
@@ -56,25 +48,12 @@ from rich.table import Table
 from rich import box
 from rich.rule import Rule
 from rich.markup import escape
-from pygments.lexer import Lexer
-from pygments.lexers import ActionScriptLexer
 
 
-class DiffSortOrder(StrEnum):
-    NATURAL = "natural"
-    CHANGES_DESC = "changes_desc"
-    CHANGES_ASC = "changes_asc"
-
-
-class DiffLayout(StrEnum):
-    UNIFIED = "unified"
-    SPLIT = "split"
-
-
-def parse_and_validate_details_filters(value: str | None) -> dict | None:
+def parse_and_validate_details_filters(value: str | None) -> DiffFilter:
     """Parse and validate the --filter option value."""
     if value is None:
-        return None
+        return DiffFilter()
 
     value = value.strip()
     filters: dict = {"script": None, "block": None}
@@ -97,7 +76,7 @@ def parse_and_validate_details_filters(value: str | None) -> dict | None:
 
         filters[fkey] = fval.lower()
 
-    return filters
+    return DiffFilter(script=filters["script"], block=filters["block"])
 
 
 def format_script_path(path: Path | str, path_rename: Path | str | None = None) -> str:
@@ -366,141 +345,64 @@ def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table, sort_order: D
         _render_node(child, is_last_child=is_last)
 
 
-def get_sorted_and_filtered_script_block_pairs(
-    diffset: GfxDiffSet, sort_order: DiffSortOrder, filters: dict | None = None
-) -> list[tuple[GfxScript, GfxScriptBlock]]:
-    """
-    List pairs of differing scripts and blocks, applying desired filters and sorting.
-    """
-    pairs: list[tuple[GfxScript, GfxScriptBlock]] = []
-    scripts: list[GfxScript] = []
-
-    for script in diffset.get_scripts_with_differing_blocks():
-        if filters is None or filters["script"] is None:
-            scripts.append(script)
-            continue
-
-        if (script.side_a_path is not None and filters["script"] in script.side_a_path.as_posix().lower()) or (
-            script.side_b_path is not None and filters["script"] in script.side_b_path.as_posix().lower()
-        ):
-            scripts.append(script)
-
-    scripts.sort(key=lambda s: s.path_sort_key())
-
-    for script in scripts:
-        blocks = sorted(
-            diffset.paired_scripts_block_diffs[script].get_differing_blocks(),
-            key=lambda b: (b.position, b.name_sort_key()),
-        )
-
-        for block in blocks:
-            if (
-                filters is None
-                or filters["block"] is None
-                or (block.side_a_name is not None and filters["block"] in block.side_a_name.lower())
-                or (block.side_b_name is not None and filters["block"] in block.side_b_name.lower())
-            ):
-                pairs.append((script, block))
-
-    if sort_order == DiffSortOrder.CHANGES_ASC:
-        pairs.sort(key=lambda p: (p[1].refined_changed, p[0].path_sort_key(), p[1].name_sort_key()))
-    elif sort_order == DiffSortOrder.CHANGES_DESC:
-        pairs.sort(key=lambda p: (-p[1].refined_changed, p[0].path_sort_key(), p[1].name_sort_key()))
-
-    return pairs
-
-
-def format_unified_diff_lines(lines: Iterable[str], script: GfxScript, block: GfxScriptBlock) -> Iterator[str]:
-    """Format unified diff lines for console output via Rich markup."""
-    for line in lines:
-        line = line.rstrip("\n")
-
-        if line.startswith("---"):
-            if block.side_a_name is None:
-                line = "--- /dev/null"
-            else:
-                line = f"--- a/{script.side_a_path.as_posix()}:{block.side_a_name}"
-            yield f"[bold]{escape(line)}[/bold]"
-        elif line.startswith("+++"):
-            if block.side_b_name is None:
-                line = "+++ /dev/null"
-            else:
-                line = f"+++ b/{script.side_b_path.as_posix()}:{block.side_b_name}"
-            yield f"[bold]{escape(line)}[/bold]"
-        elif line.startswith("@@"):
-            yield f"[cyan]{escape(line)}[/cyan]"
-        elif line.startswith("+"):
-            yield f"[green]{escape(line)}[/green]"
-        elif line.startswith("-"):
-            yield f"[red]{escape(line)}[/red]"
-        else:
-            yield escape(line)
-
-
-def display_block_diff_in_unified_layout(
-    hunk_a: list[str], hunk_b: list[str], script: GfxScript, block: GfxScriptBlock
-) -> int:
-    """Display, for a given hunk pair, the differences in the unified format."""
+def display_block_diff_in_unified_layout(block_diff: RenderableBlockDiff, debug_mode: bool) -> int:
+    """Print a given block diff in a unified layout."""
     line_count = 0
+    block = block_diff.block
 
-    for line in format_unified_diff_lines(unified_diff(hunk_a, hunk_b), script, block):
-        console.print(line, highlight=False)
+    if block_diff.prologue_messages:
+        for msg in block_diff.prologue_messages:
+            console.print(msg)
+        line_count += len(block_diff.prologue_messages)
+
+    # Unified-specific warning: unresolved ActionScript will make unified diff appear like a pure insertion or deletion.
+    # Equivalent of the "Unable to map pcode lines to ActionScript source on this side." message pane in split layout.
+    if block_diff.lang == "actionscript" and (not block_diff.side_a_resolved or not block_diff.side_b_resolved):
+        missing_side = "A" if not block_diff.side_a_resolved else "B"
+        console.print(
+            f"[yellow]Unable to map pcode lines to ActionScript source on side {missing_side}. The diff might appear misleading.[/yellow]"
+        )
         line_count += 1
+
+    for hunk_a, hunk_b in block_diff.hunk_pairs:
+        if debug_mode and block.is_paired() and block_diff.lang == "actionscript" and hunks_are_equal(hunk_a, hunk_b):
+            print_warning("Different p-code, same ActionScript.")
+
+        diff_view = build_unified_layout_for_hunk_pair(hunk_a, hunk_b, block_diff=block_diff)
+        console.print(diff_view)
+        line_count += len(diff_view.wrap(console, console.options.max_width))  # ugly but correct...
 
     return line_count
 
 
-@dataclass(frozen=True, kw_only=True)
-class BlockRenderInfo:
-    corpus: Literal["actionscript", "pcode"]
-    side_a_resolved: bool
-    side_b_resolved: bool
-
-
-def display_block_diff_in_split_layout(
-    hunk_pairs: list[tuple[TextHunk, TextHunk]], block_info: BlockRenderInfo, block: GfxScriptBlock, debug_mode: bool
-) -> int:
-    """Display, for a given hunk pair, the differences in a split layout (side-by-side)."""
+def display_block_diff_in_split_layout(block_diff: RenderableBlockDiff, debug_mode: bool) -> int:
+    """Print a given block diff in a split layout (side-by-side)."""
     line_count = 0
+    script = block_diff.script
+    block = block_diff.block
+    script_title = format_script_path(script.side_a_path, script.side_b_path)
+    block_title = format_script_block_name(block.side_a_name or block.side_b_name, block.side_b_name)
 
-    for hunk_a, hunk_b in hunk_pairs:
-        if debug_mode and block.is_paired() and block_info.corpus == "actionscript" and hunks_are_equal(hunk_a, hunk_b):
+    console.print(
+        Rule(
+            f"[dim white]────[/dim white] {script_title} [dim white]──[/dim white] {block_title}",
+            align="left",
+            style="dim white",
+        )
+    )
+    line_count += 1
+
+    if block_diff.prologue_messages:
+        console.line()
+        for msg in block_diff.prologue_messages:
+            console.print(msg)
+        line_count += 1 + len(block_diff.prologue_messages)
+
+    for hunk_a, hunk_b in block_diff.hunk_pairs:
+        if debug_mode and block.is_paired() and block_diff.lang == "actionscript" and hunks_are_equal(hunk_a, hunk_b):
             print_warning("Different p-code, same ActionScript.")
 
-        side_a: DiffHunk | SplitLayoutMessagePane
-        side_b: DiffHunk | SplitLayoutMessagePane
-
-        if block.is_paired():
-            if block_info.side_a_resolved and block_info.side_b_resolved:
-                side_a, side_b = diff_text_hunks(hunk_a, hunk_b)
-            elif not block_info.side_a_resolved:
-                side_a = SplitLayoutMessagePane(
-                    "[yellow]Unable to map pcode lines to ActionScript source on this side.[/yellow]"
-                )
-                side_b = DiffHunk.wrap(
-                    TextHunk([(ln.reannotate(is_addition=True) if not ln.is_context else ln) for ln in hunk_b])
-                )
-            elif not block_info.side_b_resolved:
-                side_a = DiffHunk.wrap(
-                    TextHunk([(ln.reannotate(is_deletion=True) if not ln.is_context else ln) for ln in hunk_a])
-                )
-                side_b = SplitLayoutMessagePane(
-                    "[yellow]Unable to map pcode lines to ActionScript source on this side.[/yellow]"
-                )
-        else:
-            if block.side_a_name is None:
-                side_a = SplitLayoutMessagePane("[dim]This block does not exist on side A.[/dim]")
-                _, side_b = diff_text_hunks(TextHunk(), hunk_b)
-            else:
-                side_a, _ = diff_text_hunks(hunk_a, TextHunk())
-                side_b = SplitLayoutMessagePane("[dim]This block does not exist on side B.[/dim]")
-
-        syntax_lexer: Lexer | None = None
-
-        if block_info.corpus == "actionscript":
-            syntax_lexer = ActionScriptLexer()
-
-        diff_view = SplitLayout.from_pair(side_a, side_b, syntax_lexer=syntax_lexer, word_wrap=True)
+        diff_view = build_split_layout_for_hunk_pair(hunk_a, hunk_b, block_diff=block_diff)
 
         console.line()
         console.print(diff_view)
@@ -510,14 +412,18 @@ def display_block_diff_in_split_layout(
     return line_count
 
 
-def display_detailed_diff_in_pcode(
-    diffset: GfxDiffSet,
+def display_detailed_diff(
+    workspace_a: Workspace,
     normalized_script_blocks_a: dict[Path, list[PcodeBlock]],
+    workspace_b: Workspace,
     normalized_script_blocks_b: dict[Path, list[PcodeBlock]],
+    diffset: GfxDiffSet,
+    *,
+    format: Literal["actionscript", "pcode"],
     sort_order: DiffSortOrder,
     layout: DiffLayout,
+    filters: DiffFilter,
     max_lines: int = 0,
-    filters: dict | None = None,
     debug_mode: bool = False,
 ):
     """
@@ -525,324 +431,49 @@ def display_detailed_diff_in_pcode(
     """
     line_count = 0
 
-    sorted_pairs = get_sorted_and_filtered_script_block_pairs(diffset, sort_order, filters)
-
-    if filters is not None and not sorted_pairs:
-        print_warning("No script or block name matches the provided filters.")
-
-    for script, block in sorted_pairs:
-        assert script.side_a_path is not None  # type guard for static analyzers
-        assert script.side_b_path is not None
-
-        if max_lines != 0 and line_count >= max_lines:
-            console.print(
-                f"[bold yellow]---- ✀  Diff details truncated at {line_count} lines (soft limit is {max_lines}). Use [italic]--details-truncate=0[/italic] to remove this limit. ----[/bold yellow]"
-            )
-            return
-
-        if line_count > 0:
-            console.line()
-            line_count += 1
-
-        script_a_blocks = normalized_script_blocks_a.get(script.side_a_path, [])
-        script_b_blocks = normalized_script_blocks_b.get(script.side_b_path, [])
-        block_side_a = next((b for b in script_a_blocks if b.name == block.side_a_name), None)
-        block_side_b = next((b for b in script_b_blocks if b.name == block.side_b_name), None)
-
-        block_a_lines = [ln.render() for ln in block_side_a.lines] if block_side_a else []
-        block_b_lines = [ln.render() for ln in block_side_b.lines] if block_side_b else []
-        block_b_lines = align_labels_in_text(block_b_lines, anchor_lines=block_a_lines)
-        block_b_lines = align_registers_in_text(block_b_lines, anchor_lines=block_a_lines)
-
-        if layout == DiffLayout.UNIFIED:
-            line_count += display_block_diff_in_unified_layout(block_a_lines, block_b_lines, script, block)
-        else:
-            block_a_diff_lines: set[int] = set()
-            block_b_diff_lines: set[int] = set()
-            block_info = BlockRenderInfo(corpus="pcode", side_a_resolved=True, side_b_resolved=True)
-
-            if block.is_paired():
-                # Recompute diff spans on aligned lines: block.diff_spans was computed on normalized but
-                # unaligned block content and would reference lines that, after label/register alignment,
-                # no longer actually differ, producing spurious hunks of unchanged content.
-                aligned_diff = diff_texts(block_a_lines, block_b_lines)
-                for span in aligned_diff.spans:
-                    block_a_diff_lines.update(range(span.a[0], span.a[1]))
-                    block_b_diff_lines.update(range(span.b[0], span.b[1]))
-                    # For pure deletions/additions, add a line anchor on the "empty" side
-                    # so cut_text_hunks_with_context captures context lines there, allowing
-                    # align_hunk_pairs to produce a side-by-side hunk instead of an empty column.
-                    if span.a[0] == span.a[1] and block_a_lines:
-                        block_a_diff_lines.add(min(span.a[0], len(block_a_lines) - 1))
-                    if span.b[0] == span.b[1] and block_b_lines:
-                        block_b_diff_lines.add(min(span.b[0], len(block_b_lines) - 1))
-            else:
-                # For unmatched blocks there are no diff spans, so we have no choice but to display the whole block.
-                if block_side_a is not None:
-                    block_a_diff_lines = set(range(0, len(block_side_a.lines)))
-
-                if block_side_b is not None:
-                    block_b_diff_lines = set(range(0, len(block_side_b.lines)))
-
-            hunk_pairs = align_hunk_pairs(
-                cut_text_hunks_with_context(block_a_lines, block_a_diff_lines, context_length=5, merge=True),
-                cut_text_hunks_with_context(block_b_lines, block_b_diff_lines, context_length=5, merge=True),
-            )
-
-            script_title = format_script_path(script.side_a_path, script.side_b_path)
-            block_title = format_script_block_name(block.side_a_name or block.side_b_name, block.side_b_name)
-
-            console.print(
-                Rule(
-                    f"[dim white]────[/dim white] {script_title} [dim white]──[/dim white] {block_title}",
-                    align="left",
-                    style="dim white",
-                )
-            )
-            line_count += 1
-
-            line_count += display_block_diff_in_split_layout(hunk_pairs, block_info, block, debug_mode)
-
-
-def display_detailed_diff_in_actionscript(
-    workspace_a: Workspace,
-    normalized_script_blocks_a: dict[Path, list[PcodeBlock]],
-    workspace_b: Workspace,
-    normalized_script_blocks_b: dict[Path, list[PcodeBlock]],
-    diffset: GfxDiffSet,
-    sort_order: DiffSortOrder,
-    layout: DiffLayout,
-    max_lines: int = 0,
-    filters: dict | None = None,
-    debug_mode: bool = False,
-):
-    line_count = 0
-
-    sorted_pairs = get_sorted_and_filtered_script_block_pairs(diffset, sort_order, filters)
-
-    if filters is not None and not sorted_pairs:
-        print_warning("No script or block name matches the provided filters.")
-
-    # Cache for ActionScript sources.
-    actionscript_cache: dict[Path, list[str]] = {}
-
-    def _read_actionscript_source_lines(file: Path) -> list[str]:
-        if file not in actionscript_cache:
-            if not file.is_file():
-                print_error(f"ActionScript file not found: {escape(str(file))}.")
-                raise typer.Exit(code=1)
-            actionscript_cache[file] = read_file_lines(file)
-
-        return actionscript_cache[file]
-
     try:
-        file_a_swd_pcode = parse_swd_file(workspace_a.find_debug_pcode_swd_file())
-        file_a_swd_as = parse_swd_file(workspace_a.find_debug_actionscript_swd_file())
-        file_b_swd_pcode = parse_swd_file(workspace_b.find_debug_pcode_swd_file())
-        file_b_swd_as = parse_swd_file(workspace_b.find_debug_actionscript_swd_file())
-    except FileNotFoundError as e:
-        print_error(e)
-        raise typer.Exit(code=1)
-
-    file_a_pcode_to_as_line_map = build_pcode_to_actionscript_line_map(
-        file_a_swd_pcode, file_a_swd_as, {script.side_a_path.as_posix() for script, _ in sorted_pairs}
-    )
-
-    file_b_pcode_to_as_line_map = build_pcode_to_actionscript_line_map(
-        file_b_swd_pcode, file_b_swd_as, {script.side_b_path.as_posix() for script, _ in sorted_pairs}
-    )
-
-    context_first_block_diff_display = True
-
-    for script, block in sorted_pairs:
-        assert script.side_a_path is not None  # type guard for static analyzers
-        assert script.side_b_path is not None
-
-        if max_lines != 0 and line_count >= max_lines:
-            console.print(
-                Rule(
-                    f"[bold yellow]✀  Diff details truncated at {line_count} lines (soft limit is {max_lines}). Use [italic]--details-truncate=0[/italic] to remove this limit.[/bold yellow]",
-                    align="center",
-                    style="bold yellow",
-                    characters="-",
-                )
+        if format == "actionscript":
+            renderables = prepare_diffset_actionscript_render(
+                diffset,
+                workspace_a,
+                normalized_script_blocks_a,
+                workspace_b,
+                normalized_script_blocks_b,
+                sort_order,
+                filters,
             )
-            console.line()
+        else:
+            renderables = prepare_diffset_pcode_render(
+                diffset, normalized_script_blocks_a, normalized_script_blocks_b, sort_order, filters
+            )
+    except (RuntimeError, FileNotFoundError) as e:
+        print_warning(e)
+        return
+
+    is_first_iteration = True
+
+    for renderable in renderables:
+        if max_lines != 0 and line_count >= max_lines:
+            trunc_msg = f"✀  Diff details truncated at {line_count} lines (soft limit is {max_lines}). Use [italic]--details-truncate=0[/italic] to remove this limit."
+            if layout == DiffLayout.UNIFIED:
+                console.print(f"[bold yellow]---- {trunc_msg} ----[/bold yellow]")
+            else:
+                console.print(
+                    Rule(f"[bold yellow]{trunc_msg}[/bold yellow]", align="center", style="bold yellow", characters="-")
+                )
+                console.line()
             return
 
-        script_a_actionscript_lines = _read_actionscript_source_lines(
-            workspace_a.find_actionscript_file(script.side_a_path)
-        )
-
-        script_b_actionscript_lines = _read_actionscript_source_lines(
-            workspace_b.find_actionscript_file(script.side_b_path)
-        )
-
-        script_a_name = script.side_a_path.as_posix()
-        if script_a_name not in file_a_pcode_to_as_line_map:
-            print_error(f"Script {script_a_name!r} not found in SWD file.")
-            raise typer.Exit(code=1)
-        script_a_pcode_to_as = file_a_pcode_to_as_line_map[script_a_name]
-
-        script_b_name = script.side_b_path.as_posix()
-        if script_b_name not in file_b_pcode_to_as_line_map:
-            print_error(f"Script {script_b_name!r} not found in SWD file.")
-            raise typer.Exit(code=1)
-        script_b_pcode_to_as = file_b_pcode_to_as_line_map[script_b_name]
-
-        script_a_blocks = normalized_script_blocks_a.get(script.side_a_path, [])
-        script_b_blocks = normalized_script_blocks_b.get(script.side_b_path, [])
-
-        if not context_first_block_diff_display:
+        if is_first_iteration:
+            is_first_iteration = False
+        else:
             console.line()
             line_count += 1
 
-        block_side_a = next((b for b in script_a_blocks if b.name == block.side_a_name), None)
-        block_side_b = next((b for b in script_b_blocks if b.name == block.side_b_name), None)
-
-        # Mapped lines in ActionScript are sparse. Simple naive improvement: propagate mapped
-        # lines to subsequent unmapped lines, within the boundaries of the block.
-        block_a_pcode_to_as: dict[int, int | None] = {}
-        block_b_pcode_to_as: dict[int, int | None] = {}
-
-        if block_side_a is not None:
-            block_a_first_line = min(block_side_a.lines[0].source_lines)
-            block_a_last_line = max(block_side_a.lines[-1].source_lines)
-            block_a_pcode_to_as = propagate_mapped_lines_to_subsequent_unmapped_lines(
-                {k: v for k, v in script_a_pcode_to_as.items() if block_a_first_line <= k <= block_a_last_line}
-            )
-
-        if block_side_b is not None:
-            block_b_first_line = min(block_side_b.lines[0].source_lines)
-            block_b_last_line = max(block_side_b.lines[-1].source_lines)
-            block_b_pcode_to_as = propagate_mapped_lines_to_subsequent_unmapped_lines(
-                {k: v for k, v in script_b_pcode_to_as.items() if block_b_first_line <= k <= block_b_last_line}
-            )
-
-        concerned_lines_in_raw_block_a: set[int] = set()
-        concerned_lines_in_raw_block_b: set[int] = set()
-
-        if block.is_paired():
-            for diff_span_a, diff_span_b in block.diff_spans:
-                for pcode_line in block_side_a.lines[diff_span_a[0] : diff_span_a[1]]:
-                    concerned_lines_in_raw_block_a.update(pcode_line.source_lines)
-
-                for pcode_line in block_side_b.lines[diff_span_b[0] : diff_span_b[1]]:
-                    concerned_lines_in_raw_block_b.update(pcode_line.source_lines)
-        else:
-            if block_side_a is not None:
-                concerned_lines_in_raw_block_a = set(merge_pcode_lines_sources(*block_side_a.lines))
-            if block_side_b is not None:
-                concerned_lines_in_raw_block_b = set(merge_pcode_lines_sources(*block_side_b.lines))
-
-        concerned_lines_in_as_source_a: set[int] = set()
-        for ln in concerned_lines_in_raw_block_a:
-            as_src_line = block_a_pcode_to_as.get(ln)
-            if as_src_line is not None:
-                assert 0 <= as_src_line < len(script_a_actionscript_lines), (
-                    f"Mapped ActionScript line {as_src_line} is out of bounds! Side A script {script_a_name} has {len(script_a_actionscript_lines)} lines."
-                )
-                concerned_lines_in_as_source_a.add(as_src_line)
-
-        concerned_lines_in_as_source_b: set[int] = set()
-        for ln in concerned_lines_in_raw_block_b:
-            as_src_line = block_b_pcode_to_as.get(ln)
-            if as_src_line is not None:
-                assert 0 <= as_src_line < len(script_b_actionscript_lines), (
-                    f"Mapped ActionScript line {as_src_line} is out of bounds! Side B script {script_b_name} has {len(script_b_actionscript_lines)} lines."
-                )
-                concerned_lines_in_as_source_b.add(as_src_line)
-
-        block_a_corpus_lines: list[str]
-        block_a_diff_lines: set[int]
-        block_b_corpus_lines: list[str]
-        block_b_diff_lines: set[int]
-        block_info: BlockRenderInfo
-
-        if concerned_lines_in_as_source_a or concerned_lines_in_as_source_b:
-            block_a_corpus_lines = script_a_actionscript_lines
-            block_a_diff_lines = concerned_lines_in_as_source_a
-            block_b_corpus_lines = script_b_actionscript_lines
-            block_b_diff_lines = concerned_lines_in_as_source_b
-            block_info = BlockRenderInfo(
-                corpus="actionscript",
-                side_a_resolved=bool(concerned_lines_in_as_source_a),
-                side_b_resolved=bool(concerned_lines_in_as_source_b),
-            )
-        else:
-            concerned_lines_in_normalized_block_a: set[int] = set()
-            concerned_lines_in_normalized_block_b: set[int] = set()
-
-            block_a_corpus_lines = [ln.render() for ln in block_side_a.lines] if block_side_a is not None else []
-            block_b_corpus_lines = [ln.render() for ln in block_side_b.lines] if block_side_b is not None else []
-
-            if block.is_paired():
-                for diff_span_a, diff_span_b in block.diff_spans:
-                    concerned_lines_in_normalized_block_a.update(range(diff_span_a[0], diff_span_a[1]))
-                    concerned_lines_in_normalized_block_b.update(range(diff_span_b[0], diff_span_b[1]))
-            else:
-                # For unmatched blocks with no mapped ActionScript source lines, simply display the whole p-code block.
-                # This branch is probably practically dead, even though, in theory, it could happen.
-                if block_side_a is not None:
-                    concerned_lines_in_normalized_block_a = set(range(0, len(block_side_a.lines)))
-
-                if block_side_b is not None:
-                    concerned_lines_in_normalized_block_b = set(range(0, len(block_side_b.lines)))
-
-            block_a_diff_lines = concerned_lines_in_normalized_block_a
-            block_b_diff_lines = concerned_lines_in_normalized_block_b
-            block_info = BlockRenderInfo(
-                corpus="pcode",
-                side_a_resolved=bool(concerned_lines_in_normalized_block_a),
-                side_b_resolved=bool(concerned_lines_in_normalized_block_b),
-            )
-
-        hunk_pairs = align_hunk_pairs(
-            cut_text_hunks_with_context(block_a_corpus_lines, block_a_diff_lines, context_length=5, merge=True),
-            cut_text_hunks_with_context(block_b_corpus_lines, block_b_diff_lines, context_length=5, merge=True),
-        )
-
         if layout == DiffLayout.UNIFIED:
-            if block_info.corpus == "pcode":
-                console.print(
-                    "[yellow]Unable to map pcode lines to ActionScript source for this block. Falling back to normalized p-code.[/yellow]"
-                )
-                line_count += 1
-            elif not block_info.side_a_resolved or not block_info.side_b_resolved:
-                missing_side = "A" if not block_info.side_a_resolved else "B"
-                console.print(
-                    f"[yellow]Unable to map pcode lines to ActionScript source on side {missing_side}. The diff might appear misleading.[/yellow]"
-                )
-                line_count += 1
-
-            for block_a_hunk, block_b_hunk in hunk_pairs:
-                line_count += display_block_diff_in_unified_layout(
-                    block_a_hunk.to_str_list(), block_b_hunk.to_str_list(), script, block
-                )
-
+            line_count += display_block_diff_in_unified_layout(renderable, debug_mode=debug_mode)
         else:
-            script_title = format_script_path(script.side_a_path, script.side_b_path)
-            block_title = format_script_block_name(block.side_a_name or block.side_b_name, block.side_b_name)
-
-            console.print(
-                Rule(
-                    f"[dim white]────[/dim white] {script_title} [dim white]──[/dim white] {block_title}",
-                    align="left",
-                    style="dim white",
-                )
-            )
-            line_count += 1
-
-            if block_info.corpus == "pcode":
-                console.line()
-                console.print(
-                    "[yellow]Unable to map pcode lines to ActionScript source for this block. Falling back to normalized p-code.[/yellow]"
-                )
-                line_count += 2
-
-            line_count += display_block_diff_in_split_layout(hunk_pairs, block_info, block, debug_mode)
-
-        context_first_block_diff_display = False
+            line_count += display_block_diff_in_split_layout(renderable, debug_mode=debug_mode)
 
 
 def display_summary(diffset: GfxDiffSet, sort_order: DiffSortOrder):
@@ -1091,30 +722,19 @@ def command(
         return
 
     if not show_summary_only:
-        if diff_format == "actionscript":
-            display_detailed_diff_in_actionscript(
-                workspace_a,
-                normalized_script_blocks_a,
-                workspace_b,
-                normalized_script_blocks_b,
-                diffset,
-                sort_order=sort_order,
-                layout=layout,
-                max_lines=truncate_detailed_diff,
-                filters=details_filters,
-                debug_mode=debug_mode,
-            )
-        elif diff_format == "pcode":
-            display_detailed_diff_in_pcode(
-                diffset,
-                normalized_script_blocks_a,
-                normalized_script_blocks_b,
-                sort_order=sort_order,
-                layout=layout,
-                max_lines=truncate_detailed_diff,
-                filters=details_filters,
-                debug_mode=debug_mode,
-            )
+        display_detailed_diff(
+            workspace_a,
+            normalized_script_blocks_a,
+            workspace_b,
+            normalized_script_blocks_b,
+            diffset,
+            format=diff_format,
+            sort_order=sort_order,
+            layout=layout,
+            filters=details_filters,
+            max_lines=truncate_detailed_diff,
+            debug_mode=debug_mode,
+        )
 
     if not hide_summary:
         console.line()
