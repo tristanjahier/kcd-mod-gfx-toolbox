@@ -38,6 +38,7 @@ from .diff.core import (
 from .utils import (
     console,
     ensure_empty_dir,
+    print_debug,
     print_error,
     print_warning,
 )
@@ -366,7 +367,7 @@ def display_block_diff_in_unified_layout(block_diff: RenderableBlockDiff, debug_
 
     if debug_mode and block.is_paired() and block_diff.lang == "actionscript":
         if any(hunks_are_equal(a, b) for a, b in block_diff.hunk_pairs):
-            print_warning("At least one pair of hunks are equal (different p-code but same decompiled ActionScript).")
+            print_debug("At least one pair of hunks are equal (different p-code but same decompiled ActionScript).")
 
     diff_view = build_unified_layout_for_block_diff(block_diff)
     console.print(diff_view)
@@ -400,7 +401,7 @@ def display_block_diff_in_split_layout(block_diff: RenderableBlockDiff, debug_mo
 
     for hunk_a, hunk_b in block_diff.hunk_pairs:
         if debug_mode and block.is_paired() and block_diff.lang == "actionscript" and hunks_are_equal(hunk_a, hunk_b):
-            print_warning("Different p-code but same decompiled ActionScript.")
+            print_debug("Different p-code but same decompiled ActionScript.")
 
         diff_view = build_split_layout_for_hunk_pair(hunk_a, hunk_b, block_diff=block_diff)
 

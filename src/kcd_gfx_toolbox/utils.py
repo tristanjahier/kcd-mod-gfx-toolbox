@@ -34,6 +34,13 @@ def print_warning(message: str | BaseException):
     stderr_console.print(f"WARNING: {message}", style="bold yellow", highlight=False)
 
 
+def print_debug(message: str):
+    """
+    Print a debug message in the console.
+    """
+    stderr_console.print(f"DEBUG: {message}", style="bold light_steel_blue1", highlight=False)
+
+
 def list_tree_files(path: Path, glob: str | None = None) -> set[Path]:
     """
     Return a set of all file paths in a directory subtree, relative to the root.
