@@ -369,6 +369,9 @@ def display_block_diff_in_unified_layout(block_diff: RenderableBlockDiff, debug_
         if any(hunks_are_equal(a, b) for a, b in block_diff.hunk_pairs):
             print_debug("At least one pair of hunks are equal (different p-code but same decompiled ActionScript).")
 
+    if debug_mode and len(block_diff.hunk_pairs) > 1:
+        print_debug("This block has more than one hunk.")
+
     diff_view = build_unified_layout_for_block_diff(block_diff)
     console.print(diff_view)
     line_count += diff_view.get_last_render_height()
@@ -398,6 +401,9 @@ def display_block_diff_in_split_layout(block_diff: RenderableBlockDiff, debug_mo
         for msg in block_diff.prologue_messages:
             console.print(msg)
         line_count += 1 + len(block_diff.prologue_messages)
+
+    if debug_mode and len(block_diff.hunk_pairs) > 1:
+        print_debug("This block has more than one hunk.")
 
     for hunk_a, hunk_b in block_diff.hunk_pairs:
         if debug_mode and block.is_paired() and block_diff.lang == "actionscript" and hunks_are_equal(hunk_a, hunk_b):
