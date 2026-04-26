@@ -423,7 +423,7 @@ def cut_text_hunks_with_context(
         hunk_first_line = hunk[0].index
         last_hunk_last_line = last_hunk[-1].index
 
-        if last_hunk_last_line >= hunk_first_line:
+        if last_hunk_last_line + 1 >= hunk_first_line:
             last_hunk.extend(hunk)
             deduped_hunk: dict[int, TextHunkLine] = {}
 

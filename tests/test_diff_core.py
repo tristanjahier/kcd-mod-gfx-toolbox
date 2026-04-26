@@ -1206,7 +1206,7 @@ def test_cut_text_hunks_with_context_with_unordered_set_selection():
     ]
 
 
-def test_cut_text_hunks_with_context_merge():
+def test_cut_text_hunks_with_context_merges_adjacent_and_overlapping_hunks():
     sample = sample_text_lines("""
         Push register1, "m_DisplayedData", 0.0, "Array"
         NewObject
@@ -1234,9 +1234,17 @@ def test_cut_text_hunks_with_context_merge():
         Add2
         Push -1.3
         Subtract
+        Push register2
+        Push "E_IS_Weight"
+        Push 2
+        SetMember
+        Push register2
+        Push "E_IS_Price"
+        Push 3
+        SetMember
     """)
 
-    hunks = cut_text_hunks_with_context(sample, [1, 6, 7, 8, 19, 20], context_length=3, merge=True)
+    hunks = cut_text_hunks_with_context(sample, [1, 6, 7, 8, 19, 20, 27], context_length=3, merge=True)
 
     assert hunks == [
         [
@@ -1264,6 +1272,13 @@ def test_cut_text_hunks_with_context_merge():
             _hunk_ctx(21, "loc78f:"),
             _hunk_ctx(22, "Push -1"),
             _hunk_ctx(23, "Add2"),
+            _hunk_ctx(24, "Push -1.3"),
+            _hunk_ctx(25, "Subtract"),
+            _hunk_ctx(26, "Push register2"),
+            _hunk_select(27, 'Push "E_IS_Weight"'),
+            _hunk_ctx(28, "Push 2"),
+            _hunk_ctx(29, "SetMember"),
+            _hunk_ctx(30, "Push register2"),
         ],
     ]
 
