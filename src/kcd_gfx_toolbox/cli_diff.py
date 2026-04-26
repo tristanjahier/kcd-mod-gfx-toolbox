@@ -22,7 +22,7 @@ from .diff.rendering import (
     RenderableBlockDiff,
     DiffSortOrder,
     build_split_layout_for_hunk_pair,
-    build_unified_layout_for_hunk_pair,
+    build_unified_layout_for_block_diff,
     prepare_diffset_actionscript_render,
     prepare_diffset_pcode_render,
 )
@@ -364,13 +364,13 @@ def display_block_diff_in_unified_layout(block_diff: RenderableBlockDiff, debug_
         )
         line_count += 1
 
-    for hunk_a, hunk_b in block_diff.hunk_pairs:
-        if debug_mode and block.is_paired() and block_diff.lang == "actionscript" and hunks_are_equal(hunk_a, hunk_b):
-            print_warning("Different p-code, same ActionScript.")
+    if debug_mode and block.is_paired() and block_diff.lang == "actionscript":
+        if any(hunks_are_equal(a, b) for a, b in block_diff.hunk_pairs):
+            print_warning("At least one pair of hunks are equal (different p-code but same decompiled ActionScript).")
 
-        diff_view = build_unified_layout_for_hunk_pair(hunk_a, hunk_b, block_diff=block_diff)
-        console.print(diff_view)
-        line_count += len(diff_view.wrap(console, console.options.max_width))  # ugly but correct...
+    diff_view = build_unified_layout_for_block_diff(block_diff)
+    console.print(diff_view)
+    line_count += diff_view.get_last_render_height()
 
     return line_count
 
@@ -400,7 +400,7 @@ def display_block_diff_in_split_layout(block_diff: RenderableBlockDiff, debug_mo
 
     for hunk_a, hunk_b in block_diff.hunk_pairs:
         if debug_mode and block.is_paired() and block_diff.lang == "actionscript" and hunks_are_equal(hunk_a, hunk_b):
-            print_warning("Different p-code, same ActionScript.")
+            print_warning("Different p-code but same decompiled ActionScript.")
 
         diff_view = build_split_layout_for_hunk_pair(hunk_a, hunk_b, block_diff=block_diff)
 

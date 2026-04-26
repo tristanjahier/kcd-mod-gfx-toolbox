@@ -3,7 +3,7 @@ Data preparation and Rich component builders for rendering a GfxDiffSet: sorting
 source, slicing differing blocks into hunks, and assembling renderable split or unified layouts.
 """
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -11,7 +11,6 @@ from typing import Literal
 from rich.markup import escape
 from pygments.lexer import Lexer
 from pygments.lexers import ActionScriptLexer
-from rich.text import Text as RichText
 
 from kcd_gfx_toolbox.avm1.pcode_alignment import align_labels_in_text, align_registers_in_text
 from kcd_gfx_toolbox.avm1.pcode_parsing import PcodeBlock, merge_pcode_lines_sources
@@ -29,10 +28,10 @@ from .core import (
     cut_text_hunks_with_context,
     diff_text_hunks,
     diff_texts,
-    unified_diff,
 )
 from .gfx import GfxDiffSet, GfxScript, GfxScriptBlock
 from .split_layout import SplitLayout, SplitLayoutMessagePane
+from .unified_layout import UnifiedLayout
 
 
 class DiffSortOrder(StrEnum):
@@ -400,33 +399,6 @@ def prepare_diffset_actionscript_render(
     return renderables
 
 
-def format_unified_diff_lines(lines: Iterable[str], script: GfxScript, block: GfxScriptBlock) -> Iterator[str]:
-    """Format unified diff lines for console output via Rich markup."""
-    for line in lines:
-        line = line.rstrip("\n")
-
-        if line.startswith("---"):
-            if block.side_a_name is None:
-                line = "--- /dev/null"
-            else:
-                line = f"--- a/{script.side_a_path.as_posix()}:{block.side_a_name}"
-            yield f"[bold]{escape(line)}[/bold]"
-        elif line.startswith("+++"):
-            if block.side_b_name is None:
-                line = "+++ /dev/null"
-            else:
-                line = f"+++ b/{script.side_b_path.as_posix()}:{block.side_b_name}"
-            yield f"[bold]{escape(line)}[/bold]"
-        elif line.startswith("@@"):
-            yield f"[cyan]{escape(line)}[/cyan]"
-        elif line.startswith("+"):
-            yield f"[green]{escape(line)}[/green]"
-        elif line.startswith("-"):
-            yield f"[red]{escape(line)}[/red]"
-        else:
-            yield escape(line)
-
-
 def build_split_layout_for_hunk_pair(
     hunk_a: TextHunk, hunk_b: TextHunk, block_diff: RenderableBlockDiff
 ) -> SplitLayout:
@@ -469,11 +441,24 @@ def build_split_layout_for_hunk_pair(
     return SplitLayout.from_pair(side_a, side_b, syntax_lexer=syntax_lexer, word_wrap=True)
 
 
-def build_unified_layout_for_hunk_pair(hunk_a: TextHunk, hunk_b: TextHunk, block_diff: RenderableBlockDiff) -> RichText:
+def build_unified_layout_for_block_diff(block_diff: RenderableBlockDiff) -> UnifiedLayout:
     """
-    Take a pair of hunks, compute their unified diff, and build a RichText renderable component with colored markup.
-    """
-    unifdiff = unified_diff(hunk_a.to_str_list(), hunk_b.to_str_list())
-    lines = format_unified_diff_lines(unifdiff, block_diff.script, block_diff.block)
+    Build a UnifiedLayout for a whole block diff: one `--- / +++` header pair, and one `@@` header
+    per `(hunk_a, hunk_b)` pair.
 
-    return RichText.from_markup("\n".join(lines))
+    Each pair is classified into context / deletion / insertion segments via `diff_text_hunks`.
+    """
+    script = block_diff.script
+    block = block_diff.block
+
+    def _side_path(script_path: Path | None, block_name: str | None) -> str | None:
+        if script_path is not None and block_name is not None:
+            return f"{script_path.as_posix()}:{block_name}"
+        else:
+            return None
+
+    return UnifiedLayout(
+        _side_path(script.side_a_path, block.side_a_name),
+        _side_path(script.side_b_path, block.side_b_name),
+        [diff_text_hunks(hunk_a, hunk_b) for hunk_a, hunk_b in block_diff.hunk_pairs],
+    )
