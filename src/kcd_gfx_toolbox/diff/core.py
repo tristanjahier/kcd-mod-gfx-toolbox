@@ -509,18 +509,24 @@ def align_hunk_pairs(hunks_1: list[TextHunk], hunks_2: list[TextHunk]) -> list[t
         autojunk=False,
     )
 
-    def _flatten_hunk_list(hunk_list: list[TextHunk]) -> TextHunk:
-        return TextHunk(itertools.chain.from_iterable(hunk_list))
-
     for tag, i1, i2, j1, j2 in seqmatch.get_opcodes():
+        side_a_len = i2 - i1
+        side_b_len = j2 - j1
+
         if tag == "equal":
-            hunk_pairs.append((_flatten_hunk_list(hunks_1[i1:i2]), _flatten_hunk_list(hunks_2[j1:j2])))
+            for k in range(side_a_len):
+                hunk_pairs.append((hunks_1[i1 + k], hunks_2[j1 + k]))
         elif tag == "replace":
-            hunk_pairs.append((_flatten_hunk_list(hunks_1[i1:i2]), _flatten_hunk_list(hunks_2[j1:j2])))
+            for k in range(max(side_a_len, side_b_len)):
+                ha = hunks_1[i1 + k] if k < side_a_len else TextHunk()
+                hb = hunks_2[j1 + k] if k < side_b_len else TextHunk()
+                hunk_pairs.append((ha, hb))
         elif tag == "insert":
-            hunk_pairs.append((TextHunk(), _flatten_hunk_list(hunks_2[j1:j2])))
+            for k in range(side_b_len):
+                hunk_pairs.append((TextHunk(), hunks_2[j1 + k]))
         elif tag == "delete":
-            hunk_pairs.append((_flatten_hunk_list(hunks_1[i1:i2]), TextHunk()))
+            for k in range(side_a_len):
+                hunk_pairs.append((hunks_1[i1 + k], TextHunk()))
 
     return [align_hunk_pair_edge_context(h1, h2) for h1, h2 in hunk_pairs]
 

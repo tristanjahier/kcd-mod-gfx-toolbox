@@ -1667,6 +1667,33 @@ def test_align_hunk_pair_edge_context_with_context_only():
         align_hunk_pair_edge_context(hunk_1, hunk_2)
 
 
+def test_align_hunk_pairs_does_not_merge_non_adjacent_hunks():
+    # We have two unrelated diffs at lines 5 and 25, separated by 20 identical lines.
+    # With a context length of 5, `cut_text_hunks_with_context` produces TWO separate hunks per side.
+    # `align_hunk_pairs` must keep them as two separate pairs.
+    # Gluing them together will produce erroneous hunks with non-contiguous lines.
+    side_a = [f"line{i}" for i in range(30)]
+    side_a[5] = "DIFF_A_FIRST"
+    side_a[25] = "DIFF_A_SECOND"
+    side_b = list(side_a)
+    side_b[5] = "DIFF_B_FIRST"
+    side_b[25] = "DIFF_B_SECOND"
+
+    hunks_a = cut_text_hunks_with_context(side_a, [5, 25], context_length=5, merge=True)
+    hunks_b = cut_text_hunks_with_context(side_b, [5, 25], context_length=5, merge=True)
+    assert len(hunks_a) == 2 and len(hunks_b) == 2  # sanity check: not pre-merged by cut_text_hunks
+
+    pairs = align_hunk_pairs(hunks_a, hunks_b)
+
+    assert len(pairs) == 2
+
+    for ha, hb in pairs:
+        a_idx = [ln.index for ln in ha]
+        b_idx = [ln.index for ln in hb]
+        assert a_idx == list(range(a_idx[0], a_idx[-1] + 1)), f"side A indices not contiguous: {a_idx}"
+        assert b_idx == list(range(b_idx[0], b_idx[-1] + 1)), f"side B indices not contiguous: {b_idx}"
+
+
 def test_align_hunk_pairs():
     hunks_1 = [
         [
@@ -1805,11 +1832,17 @@ def test_align_hunk_pairs():
                 _hunk_ctx(22, "Push -1"),
                 _hunk_ctx(23, "Add2"),
             ],
+            # TODO: the following hunk should appear in a separate insertion hunk (see previous comment).
+            # And the hunk on side A should be paired with the next hunk on side B.
             [
                 _hunk_select(16, "GetMember"),
                 _hunk_select(17, "Push register3"),
                 _hunk_select(18, 'Push "vioc"'),
-                # To do: these three lines above should appear in a separate insertion hunk (see previous comment).
+            ],
+        ),
+        (
+            [],
+            [
                 _hunk_ctx(19, ""),
                 _hunk_ctx(20, "SetMember"),
                 _hunk_ctx(21, 'Push register2, "GetMoney"'),
