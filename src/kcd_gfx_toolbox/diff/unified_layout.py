@@ -54,8 +54,8 @@ class UnifiedLayout:
                 continue
 
             # 1-based start indices, with the unified-diff convention of 0 when the side has no lines.
-            a_start = a_lines[0].index + 1 if a_lines else 0
-            b_start = b_lines[0].index + 1 if b_lines else 0
+            a_start = a_lines[0].number if a_lines else 0
+            b_start = b_lines[0].number if b_lines else 0
             hunk_header = unidiff_hunk_header(a_start, len(a_lines), b_start, len(b_lines))
             yield Text.from_markup(f"[cyan]{hunk_header}[/cyan]")
 

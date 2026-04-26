@@ -305,11 +305,11 @@ def format_path_rename_git_style(path_a: Path, path_b: Path | None) -> str:
 @dataclass(frozen=True, slots=True)
 class TextHunkLine:
     """
-    A line in a text hunk identified by its source line number (0-based).
+    A line in a text hunk identified by its source line index (0-based).
     It can be annotated with diff contextual information.
     """
 
-    index: int
+    index: int  # 0-based
     text: str
     is_context: bool = False
     is_deletion: bool = False
@@ -319,12 +319,17 @@ class TextHunkLine:
         if sum((self.is_context, self.is_deletion, self.is_addition)) > 1:
             raise ValueError("A TextHunkLine can only have one annotation among context, deletion, or addition.")
 
+    @property
+    def number(self) -> int:
+        """The line number (1-based)."""
+        return self.index + 1
+
     def reannotate(self, is_context: bool = False, is_deletion: bool = False, is_addition: bool = False) -> Self:
         return replace(self, is_context=is_context, is_deletion=is_deletion, is_addition=is_addition)
 
     def debug_repr(self, line_padding: int = 0) -> str:
         annotation = "ctx" if self.is_context else "del" if self.is_deletion else "add" if self.is_addition else "..."
-        return f"({annotation}) {self.index:>{line_padding}d}:  {self.text}"
+        return f"({annotation}) {self.number:>{line_padding}d}:  {self.text}"
 
     def __repr__(self) -> str:
         return self.debug_repr()
@@ -337,7 +342,7 @@ class TextHunk(list[TextHunkLine]):
         return [ln.text for ln in self]
 
     def __repr__(self) -> str:
-        line_padding = max((len(str(line.index)) for line in self), default=0)
+        line_padding = max((len(str(line.number)) for line in self), default=0)
         return "\n".join(ln.debug_repr(line_padding) for ln in self)
 
 

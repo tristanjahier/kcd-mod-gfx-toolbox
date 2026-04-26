@@ -154,7 +154,7 @@ class SplitLayoutCodePane(SplitLayoutPane):
 
         self._gutter_width_cache = max(
             self.gutter_min_width,
-            max((len(str(line.index)) for line in self.diff_hunk.lines()), default=0),
+            max((len(str(line.number)) for line in self.diff_hunk.lines()), default=0),
         )
 
         return self._gutter_width_cache
@@ -205,7 +205,7 @@ class SplitLayoutCodePane(SplitLayoutPane):
 
         text.style = style
 
-        return (str(line.index), text)
+        return (str(line.number), text)
 
     def render_table_rows(self):
         if self.rows is None:
