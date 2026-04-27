@@ -494,6 +494,78 @@ def align_hunk_pair_edge_context(hunk_1: TextHunk, hunk_2: TextHunk) -> tuple[Te
     )
 
 
+def _compute_hunk_similarity(hunk_1: TextHunk, hunk_2: TextHunk) -> float:
+    return difflib.SequenceMatcher(
+        None,
+        [line.text for line in hunk_1],
+        [line.text for line in hunk_2],
+        autojunk=False,
+    ).ratio()
+
+
+def _pair_hunks_by_similarity_lookahead(
+    hunks_1: list[TextHunk], hunks_2: list[TextHunk], lookahead: int = 2
+) -> list[tuple[TextHunk, TextHunk]]:
+    """
+    Pair hunks from two lists using a similarity-based lookahead heuristic.
+
+    At each position (i, j), pick the candidate pair with the highest similarity score:
+      - (A[i], B[j']) for j' in [j .. j+lookahead]
+      - (A[i'], B[j]) for i' in [i .. i+lookahead]
+    Skipped hunks from side A are emitted as pure deletions, those from side B as pure insertions.
+    Cross-side ties go to the B-side shift.
+    """
+    pairs: list[tuple[TextHunk, TextHunk]] = []
+    m, n = len(hunks_1), len(hunks_2)
+    i, j = 0, 0
+
+    while i < m and j < n:
+        cursor_pair_similarity = _compute_hunk_similarity(hunks_1[i], hunks_2[j])
+
+        # Find the best match on side B for the current hunk on side A (at position i).
+        best_b_candidate, best_b_score = j, cursor_pair_similarity
+
+        for j_prime in range(j + 1, min(j + lookahead + 1, n)):
+            score = _compute_hunk_similarity(hunks_1[i], hunks_2[j_prime])
+            if score > best_b_score:
+                best_b_score = score
+                best_b_candidate = j_prime
+
+        # Find the best match on side A for the current hunk on side B (at position j).
+        best_a_candidate, best_a_score = i, cursor_pair_similarity
+
+        for i_prime in range(i + 1, min(i + lookahead + 1, m)):
+            score = _compute_hunk_similarity(hunks_1[i_prime], hunks_2[j])
+            if score > best_a_score:
+                best_a_score = score
+                best_a_candidate = i_prime
+
+        # Pick the best matching pair (tie => pick the B-side shift).
+        # Hunks between the current cursor and the chosen candidate become unmatched (paired with an empty hunk).
+        if best_b_score >= best_a_score:
+            for j_skipped in range(j, best_b_candidate):
+                pairs.append((TextHunk(), hunks_2[j_skipped]))
+            pairs.append((hunks_1[i], hunks_2[best_b_candidate]))
+            i += 1
+            j = best_b_candidate + 1
+        else:
+            for i_skipped in range(i, best_a_candidate):
+                pairs.append((hunks_1[i_skipped], TextHunk()))
+            pairs.append((hunks_1[best_a_candidate], hunks_2[j]))
+            i = best_a_candidate + 1
+            j += 1
+
+    # Append all the trailing hunks on the longest side.
+    while i < m:
+        pairs.append((hunks_1[i], TextHunk()))
+        i += 1
+    while j < n:
+        pairs.append((TextHunk(), hunks_2[j]))
+        j += 1
+
+    return pairs
+
+
 def align_hunk_pairs(hunks_1: list[TextHunk], hunks_2: list[TextHunk]) -> list[tuple[TextHunk, TextHunk]]:
     """
     Align two lists of text hunks by pairing similar hunks together. Order is preserved.
@@ -517,10 +589,7 @@ def align_hunk_pairs(hunks_1: list[TextHunk], hunks_2: list[TextHunk]) -> list[t
             for k in range(side_a_len):
                 hunk_pairs.append((hunks_1[i1 + k], hunks_2[j1 + k]))
         elif tag == "replace":
-            for k in range(max(side_a_len, side_b_len)):
-                ha = hunks_1[i1 + k] if k < side_a_len else TextHunk()
-                hb = hunks_2[j1 + k] if k < side_b_len else TextHunk()
-                hunk_pairs.append((ha, hb))
+            hunk_pairs.extend(_pair_hunks_by_similarity_lookahead(hunks_1[i1:i2], hunks_2[j1:j2]))
         elif tag == "insert":
             for k in range(side_b_len):
                 hunk_pairs.append((TextHunk(), hunks_2[j1 + k]))
