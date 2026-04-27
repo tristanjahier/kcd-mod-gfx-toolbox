@@ -495,12 +495,7 @@ def align_hunk_pair_edge_context(hunk_1: TextHunk, hunk_2: TextHunk) -> tuple[Te
 
 
 def _compute_hunk_similarity(hunk_1: TextHunk, hunk_2: TextHunk) -> float:
-    return difflib.SequenceMatcher(
-        None,
-        [line.text for line in hunk_1],
-        [line.text for line in hunk_2],
-        autojunk=False,
-    ).ratio()
+    return difflib.SequenceMatcher(None, hunk_1.to_str_list(), hunk_2.to_str_list(), autojunk=False).ratio()
 
 
 def _pair_hunks_by_similarity_lookahead(
