@@ -360,6 +360,14 @@ def prepare_diffset_actionscript_render(
                 for diff_span_a, diff_span_b in block.diff_spans:
                     diff_lines_in_normalized_block_a.update(range(diff_span_a[0], diff_span_a[1]))
                     diff_lines_in_normalized_block_b.update(range(diff_span_b[0], diff_span_b[1]))
+
+                    # For pure insertions/deletions, add a line anchor on the "empty" side
+                    # so cut_text_hunks_with_context captures context lines there, allowing
+                    # align_hunk_pairs to produce a side-by-side hunk instead of an empty column.
+                    if diff_span_a[0] == diff_span_a[1] and block_a_corpus_lines:
+                        diff_lines_in_normalized_block_a.add(min(diff_span_a[0], len(block_a_corpus_lines) - 1))
+                    if diff_span_b[0] == diff_span_b[1] and block_b_corpus_lines:
+                        diff_lines_in_normalized_block_b.add(min(diff_span_b[0], len(block_b_corpus_lines) - 1))
             else:
                 # For unmatched blocks with no mapped ActionScript source lines, simply display the whole p-code block.
                 # This branch is probably practically dead, even though, in theory, it could happen.
