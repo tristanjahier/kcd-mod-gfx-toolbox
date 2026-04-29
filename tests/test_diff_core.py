@@ -8,6 +8,7 @@ from kcd_gfx_toolbox.diff.core import (
     TextHunkLine,
     TextDiff,
     TextDiffSpan,
+    _pair_hunks_by_similarity_dp,
     align_hunk_pair_edge_context,
     align_hunk_pairs,
     cut_text_hunks_with_context,
@@ -2352,6 +2353,366 @@ def test_align_hunk_pairs_two_step_shift():
                     _hunk_ctx(9, 'Push 1, "Math"'),
                     _hunk_ctx(10, "GetVariable"),
                     _hunk_ctx(11, 'Push "round"'),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ctx(30, "}"),
+                    _hunk_ctx(31, "SetMember"),
+                    _hunk_ctx(32, 'Push register2, "GetMoneyForString"'),
+                    _hunk_select(
+                        33, 'DefineFunction2 "", 0, 3, false, false, true, false, true, false, false, true, false {'
+                    ),
+                    _hunk_select(34, 'loc4vs7: Push 0.5, 0.0, register1, "GetMoney"'),
+                    _hunk_select(35, "CallMethod"),
+                    _hunk_ctx(36, 'Push 1, "Math"'),
+                    _hunk_ctx(37, "GetVariable"),
+                    _hunk_ctx(38, 'Push "round"'),
+                ]
+            ),
+        ),
+    ]
+
+
+def test_pair_hunks_by_similarity_dp_three_consecutive_insertions():
+    # Side B has 3 extra hunks that have no counterparts on side A: they are pure insertions.
+    # Expected: (A1, B1), (∅, B2), (∅, B3), (∅, B4), (A2, B5).
+
+    hunks_1 = [
+        TextHunk(
+            [
+                _hunk_ctx(0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+                _hunk_select(1, "NewObject"),
+                _hunk_ctx(2, "SetMember"),
+                _hunk_ctx(3, "}"),
+                _hunk_ctx(4, "SetMember"),
+            ]
+        ),
+        TextHunk(
+            [
+                _hunk_ctx(3, "}"),
+                _hunk_ctx(4, "SetMember"),
+                _hunk_ctx(5, 'Push register2, "GetMoneyForString"'),
+                _hunk_select(
+                    6, 'DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {'
+                ),
+                _hunk_select(7, 'loc4vs5: Push 0.1, 0.0, register1, "GetMoney"'),
+                _hunk_select(8, "CallMethod"),
+                _hunk_ctx(9, 'Push 1, "Math"'),
+                _hunk_ctx(10, "GetVariable"),
+                _hunk_ctx(11, 'Push "round"'),
+            ]
+        ),
+    ]
+
+    hunks_2 = [
+        TextHunk(
+            [
+                _hunk_ctx(0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+                _hunk_select(1, "NewObject"),
+                _hunk_ctx(2, "SetMember"),
+                _hunk_ctx(3, "}"),
+            ]
+        ),
+        TextHunk(
+            [
+                _hunk_select(16, "GetMember"),
+                _hunk_select(17, "Push register3"),
+                _hunk_select(18, 'Push "vioc"'),
+            ]
+        ),
+        TextHunk(
+            [
+                _hunk_ctx(19, "CallMethod"),
+                _hunk_select(20, "Push 'Tata', register10"),
+                _hunk_select(21, "GetVariable"),
+                _hunk_select(22, "Pop"),
+                _hunk_ctx(23, 'Push "DEBUG"'),
+            ]
+        ),
+        TextHunk(
+            [
+                _hunk_ctx(23, 'Push "DEBUG"'),
+                _hunk_select(24, "GetMember"),
+                _hunk_select(25, "Push register4"),
+                _hunk_select(26, 'Push "loot"'),
+            ]
+        ),
+        TextHunk(
+            [
+                _hunk_ctx(30, "}"),
+                _hunk_ctx(31, "SetMember"),
+                _hunk_ctx(32, 'Push register2, "GetMoneyForString"'),
+                _hunk_select(
+                    33, 'DefineFunction2 "", 0, 3, false, false, true, false, true, false, false, true, false {'
+                ),
+                _hunk_select(34, 'loc4vs7: Push 0.5, 0.0, register1, "GetMoney"'),
+                _hunk_select(35, "CallMethod"),
+                _hunk_ctx(36, 'Push 1, "Math"'),
+                _hunk_ctx(37, "GetVariable"),
+                _hunk_ctx(38, 'Push "round"'),
+            ]
+        ),
+    ]
+
+    assert _pair_hunks_by_similarity_dp(hunks_1, hunks_2) == [
+        (
+            TextHunk(
+                [
+                    _hunk_ctx(0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+                    _hunk_select(1, "NewObject"),
+                    _hunk_ctx(2, "SetMember"),
+                    _hunk_ctx(3, "}"),
+                    _hunk_ctx(4, "SetMember"),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ctx(0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+                    _hunk_select(1, "NewObject"),
+                    _hunk_ctx(2, "SetMember"),
+                    _hunk_ctx(3, "}"),
+                ]
+            ),
+        ),
+        (
+            TextHunk(),
+            TextHunk(
+                [
+                    _hunk_select(16, "GetMember"),
+                    _hunk_select(17, "Push register3"),
+                    _hunk_select(18, 'Push "vioc"'),
+                ]
+            ),
+        ),
+        (
+            TextHunk(),
+            TextHunk(
+                [
+                    _hunk_ctx(19, "CallMethod"),
+                    _hunk_select(20, "Push 'Tata', register10"),
+                    _hunk_select(21, "GetVariable"),
+                    _hunk_select(22, "Pop"),
+                    _hunk_ctx(23, 'Push "DEBUG"'),
+                ]
+            ),
+        ),
+        (
+            TextHunk(),
+            TextHunk(
+                [
+                    _hunk_ctx(23, 'Push "DEBUG"'),
+                    _hunk_select(24, "GetMember"),
+                    _hunk_select(25, "Push register4"),
+                    _hunk_select(26, 'Push "loot"'),
+                ]
+            ),
+        ),
+        (
+            TextHunk(
+                [
+                    _hunk_ctx(3, "}"),
+                    _hunk_ctx(4, "SetMember"),
+                    _hunk_ctx(5, 'Push register2, "GetMoneyForString"'),
+                    _hunk_select(
+                        6, 'DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {'
+                    ),
+                    _hunk_select(7, 'loc4vs5: Push 0.1, 0.0, register1, "GetMoney"'),
+                    _hunk_select(8, "CallMethod"),
+                    _hunk_ctx(9, 'Push 1, "Math"'),
+                    _hunk_ctx(10, "GetVariable"),
+                    _hunk_ctx(11, 'Push "round"'),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ctx(30, "}"),
+                    _hunk_ctx(31, "SetMember"),
+                    _hunk_ctx(32, 'Push register2, "GetMoneyForString"'),
+                    _hunk_select(
+                        33, 'DefineFunction2 "", 0, 3, false, false, true, false, true, false, false, true, false {'
+                    ),
+                    _hunk_select(34, 'loc4vs7: Push 0.5, 0.0, register1, "GetMoney"'),
+                    _hunk_select(35, "CallMethod"),
+                    _hunk_ctx(36, 'Push 1, "Math"'),
+                    _hunk_ctx(37, "GetVariable"),
+                    _hunk_ctx(38, 'Push "round"'),
+                ]
+            ),
+        ),
+    ]
+
+
+def test_pair_hunks_by_similarity_dp_four_consecutive_unmatched():
+    # Side B has 3 extra hunks that have no counterparts on side A: they are pure insertions.
+    # Side A has one extra hunk with no counterpart: a pure deletion.
+    # Expected: (A1, B1), (A2, ∅), (∅, B2), (∅, B3), (∅, B4), (A3, B5).
+
+    hunks_1 = [
+        TextHunk(
+            [
+                _hunk_ctx(0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+                _hunk_select(1, "NewObject"),
+                _hunk_ctx(2, "SetMember"),
+                _hunk_ctx(3, "}"),
+                _hunk_ctx(4, "SetMember"),
+            ]
+        ),
+        TextHunk(
+            [
+                _hunk_ctx(3, "}"),
+                _hunk_ctx(4, "SetMember"),
+                _hunk_select(5, "Push register5"),
+                _hunk_select(6, "Push register9"),
+                _hunk_select(7, "Add2"),
+                _hunk_ctx(8, "Pop"),
+                _hunk_ctx(9, 'Push register2, "GetMoneyForString"'),
+            ]
+        ),
+        TextHunk(
+            [
+                _hunk_ctx(9, 'Push register2, "GetMoneyForString"'),
+                _hunk_select(
+                    10, 'DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {'
+                ),
+                _hunk_select(11, 'loc4vs5: Push 0.1, 0.0, register1, "GetMoney"'),
+                _hunk_select(12, "CallMethod"),
+                _hunk_ctx(13, 'Push 1, "Math"'),
+                _hunk_ctx(14, "GetVariable"),
+                _hunk_ctx(15, 'Push "round"'),
+            ]
+        ),
+    ]
+
+    hunks_2 = [
+        TextHunk(
+            [
+                _hunk_ctx(0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+                _hunk_select(1, "NewObject"),
+                _hunk_ctx(2, "SetMember"),
+                _hunk_ctx(3, "}"),
+            ]
+        ),
+        TextHunk(
+            [
+                _hunk_select(16, "GetMember"),
+                _hunk_select(17, "Push register3"),
+                _hunk_select(18, 'Push "vioc"'),
+            ]
+        ),
+        TextHunk(
+            [
+                _hunk_ctx(19, "CallMethod"),
+                _hunk_select(20, "Push 'Tata', register10"),
+                _hunk_select(21, "GetVariable"),
+                _hunk_select(22, "Pop"),
+                _hunk_ctx(23, 'Push "DEBUG"'),
+            ]
+        ),
+        TextHunk(
+            [
+                _hunk_ctx(23, 'Push "DEBUG"'),
+                _hunk_select(24, "GetMember"),
+                _hunk_select(25, "Push register4"),
+                _hunk_select(26, 'Push "loot"'),
+            ]
+        ),
+        TextHunk(
+            [
+                _hunk_ctx(30, "}"),
+                _hunk_ctx(31, "SetMember"),
+                _hunk_ctx(32, 'Push register2, "GetMoneyForString"'),
+                _hunk_select(
+                    33, 'DefineFunction2 "", 0, 3, false, false, true, false, true, false, false, true, false {'
+                ),
+                _hunk_select(34, 'loc4vs7: Push 0.5, 0.0, register1, "GetMoney"'),
+                _hunk_select(35, "CallMethod"),
+                _hunk_ctx(36, 'Push 1, "Math"'),
+                _hunk_ctx(37, "GetVariable"),
+                _hunk_ctx(38, 'Push "round"'),
+            ]
+        ),
+    ]
+
+    assert _pair_hunks_by_similarity_dp(hunks_1, hunks_2) == [
+        (
+            TextHunk(
+                [
+                    _hunk_ctx(0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+                    _hunk_select(1, "NewObject"),
+                    _hunk_ctx(2, "SetMember"),
+                    _hunk_ctx(3, "}"),
+                    _hunk_ctx(4, "SetMember"),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ctx(0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+                    _hunk_select(1, "NewObject"),
+                    _hunk_ctx(2, "SetMember"),
+                    _hunk_ctx(3, "}"),
+                ]
+            ),
+        ),
+        (
+            TextHunk(
+                [
+                    _hunk_ctx(3, "}"),
+                    _hunk_ctx(4, "SetMember"),
+                    _hunk_select(5, "Push register5"),
+                    _hunk_select(6, "Push register9"),
+                    _hunk_select(7, "Add2"),
+                    _hunk_ctx(8, "Pop"),
+                    _hunk_ctx(9, 'Push register2, "GetMoneyForString"'),
+                ]
+            ),
+            TextHunk(),
+        ),
+        (
+            TextHunk(),
+            TextHunk(
+                [
+                    _hunk_select(16, "GetMember"),
+                    _hunk_select(17, "Push register3"),
+                    _hunk_select(18, 'Push "vioc"'),
+                ]
+            ),
+        ),
+        (
+            TextHunk(),
+            TextHunk(
+                [
+                    _hunk_ctx(19, "CallMethod"),
+                    _hunk_select(20, "Push 'Tata', register10"),
+                    _hunk_select(21, "GetVariable"),
+                    _hunk_select(22, "Pop"),
+                    _hunk_ctx(23, 'Push "DEBUG"'),
+                ]
+            ),
+        ),
+        (
+            TextHunk(),
+            TextHunk(
+                [
+                    _hunk_ctx(23, 'Push "DEBUG"'),
+                    _hunk_select(24, "GetMember"),
+                    _hunk_select(25, "Push register4"),
+                    _hunk_select(26, 'Push "loot"'),
+                ]
+            ),
+        ),
+        (
+            TextHunk(
+                [
+                    _hunk_ctx(9, 'Push register2, "GetMoneyForString"'),
+                    _hunk_select(
+                        10, 'DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {'
+                    ),
+                    _hunk_select(11, 'loc4vs5: Push 0.1, 0.0, register1, "GetMoney"'),
+                    _hunk_select(12, "CallMethod"),
+                    _hunk_ctx(13, 'Push 1, "Math"'),
+                    _hunk_ctx(14, "GetVariable"),
+                    _hunk_ctx(15, 'Push "round"'),
                 ]
             ),
             TextHunk(

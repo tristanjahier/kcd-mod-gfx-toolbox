@@ -561,6 +561,94 @@ def _pair_hunks_by_similarity_lookahead(
     return pairs
 
 
+def _pair_hunks_by_similarity_dp(hunks_1: list[TextHunk], hunks_2: list[TextHunk]) -> list[tuple[TextHunk, TextHunk]]:
+    """
+    Compute an optimal alignment of two sequences of hunks.
+
+    This is a Needleman–Wunsch-style dynamic programming algorithm. It preserves order, allows gaps (unmatched hunks),
+    and maximizes the total similarity score.
+
+    Terminology:
+    1. "prefix": the first N elements of a sequence.
+       For example, `A[:i]` denotes the prefix of A containing its first `i` elements.
+    2. `alignment_score_matrix[i][j]` = best total similarity score achievable when aligning `A[:i]` with `B[:j]`.
+    """
+    m, n = len(hunks_1), len(hunks_2)
+
+    similarity_matrix = [[_compute_hunk_similarity(hunks_1[i], hunks_2[j]) for j in range(n)] for i in range(m)]
+
+    SIMILARITY_THRESHOLD = 0.2
+    GAP_PENALTY = 0.0
+    PAIR, SKIP_A, SKIP_B = 0, 1, 2  # enum-like matrix transition codes
+
+    alignment_score_matrix: list[list[float]] = [[0.0] * (n + 1) for _ in range(m + 1)]
+    backtrack_matrix: list[list[int]] = [[PAIR] * (n + 1) for _ in range(m + 1)]
+
+    # Cells (i, 0): compute the best alignment between the A[:i] prefix (first i hunks) and an empty B prefix.
+    # => The only possible option is to leave every A hunk unmatched.
+    for i in range(1, m + 1):
+        alignment_score_matrix[i][0] = alignment_score_matrix[i - 1][0] + GAP_PENALTY
+        backtrack_matrix[i][0] = SKIP_A
+
+    # Cells (0, j): compute the best alignment between an empty A prefix and the B[:j] prefix (first j hunks).
+    # => The only possible option is to leave every B hunk unmatched.
+    for j in range(1, n + 1):
+        alignment_score_matrix[0][j] = alignment_score_matrix[0][j - 1] + GAP_PENALTY
+        backtrack_matrix[0][j] = SKIP_B
+
+    # Fill in the matrix row by row, from left to right.
+    # We start at (1, 1) because we already filled the first row and the first column above.
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            # Evaluate the 3 hypotheses and keep the one that would maximize the alignment score.
+
+            # 1: If we choose to align/pair A[i-1] with B[j-1].
+            # We apply a threshold on similarity to disallow low-quality pairs.
+            similarity = similarity_matrix[i - 1][j - 1]
+
+            if similarity >= SIMILARITY_THRESHOLD:
+                pair_score = alignment_score_matrix[i - 1][j - 1] + similarity
+            else:
+                pair_score = float("-inf")
+
+            # 2: If we choose to skip A[i-1] (leave it unmatched), and align it with a gap (nothing on side B).
+            skip_a_score = alignment_score_matrix[i - 1][j] + GAP_PENALTY
+
+            # 3: If we choose to skip B[j-1] (leave it unmatched), and align it with a gap (nothing on side A).
+            skip_b_score = alignment_score_matrix[i][j - 1] + GAP_PENALTY
+
+            # Tie preference: PAIR > SKIP_B > SKIP_A.
+            # What it means: deletions will appear before insertions.
+            best_score, transition = pair_score, PAIR
+            if skip_b_score > best_score:
+                best_score, transition = skip_b_score, SKIP_B
+            if skip_a_score > best_score:
+                best_score, transition = skip_a_score, SKIP_A
+
+            alignment_score_matrix[i][j] = best_score
+            backtrack_matrix[i][j] = transition
+
+    # Reconstruct optimal alignment by backtracking from position (m, n) to (0, 0).
+    pairs: list[tuple[TextHunk, TextHunk]] = []
+    i, j = m, n
+
+    while i > 0 or j > 0:
+        transition = backtrack_matrix[i][j]
+        if transition == PAIR:
+            pairs.append((hunks_1[i - 1], hunks_2[j - 1]))
+            i -= 1
+            j -= 1
+        elif transition == SKIP_A:
+            pairs.append((hunks_1[i - 1], TextHunk()))
+            i -= 1
+        else:
+            pairs.append((TextHunk(), hunks_2[j - 1]))
+            j -= 1
+
+    pairs.reverse()
+    return pairs
+
+
 def align_hunk_pairs(hunks_1: list[TextHunk], hunks_2: list[TextHunk]) -> list[tuple[TextHunk, TextHunk]]:
     """
     Align two lists of text hunks by pairing similar hunks together. Order is preserved.
@@ -584,7 +672,7 @@ def align_hunk_pairs(hunks_1: list[TextHunk], hunks_2: list[TextHunk]) -> list[t
             for k in range(side_a_len):
                 hunk_pairs.append((hunks_1[i1 + k], hunks_2[j1 + k]))
         elif tag == "replace":
-            hunk_pairs.extend(_pair_hunks_by_similarity_lookahead(hunks_1[i1:i2], hunks_2[j1:j2]))
+            hunk_pairs.extend(_pair_hunks_by_similarity_dp(hunks_1[i1:i2], hunks_2[j1:j2]))
         elif tag == "insert":
             for k in range(side_b_len):
                 hunk_pairs.append((TextHunk(), hunks_2[j1 + k]))
