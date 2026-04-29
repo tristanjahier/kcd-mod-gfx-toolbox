@@ -118,6 +118,49 @@ def _find_pcode_block_by_name(blocks: Iterable, name: str | None) -> PcodeBlock 
         raise LookupError(f"Block {name!r} not found in normalized blocks.")
 
 
+def _pcode_block_render_data(
+    block: GfxScriptBlock, block_side_a: PcodeBlock | None, block_side_b: PcodeBlock | None
+) -> tuple[list[str], set[int], list[str], set[int]]:
+    """
+    For a given block, align side B's labels and registers to side A, compute the differences,
+    then return plain-text block lines and anchor line indices for each side.
+    """
+    block_a_lines = [ln.render() for ln in block_side_a.lines] if block_side_a else []
+    block_b_lines = [ln.render() for ln in block_side_b.lines] if block_side_b else []
+    block_b_lines = align_labels_in_text(block_b_lines, anchor_lines=block_a_lines)
+    block_b_lines = align_registers_in_text(block_b_lines, anchor_lines=block_a_lines)
+
+    # Recompute diff spans on aligned lines: block.diff_spans was computed on normalized but
+    # unaligned block content and would reference lines that, after label/register alignment,
+    # no longer actually differ, producing spurious hunks of unchanged content.
+    block_a_diff_lines: set[int] = set()
+    block_b_diff_lines: set[int] = set()
+
+    if block.is_paired():
+        aligned_diff = diff_texts(block_a_lines, block_b_lines)
+
+        for diff_span_a, diff_span_b in aligned_diff.spans:
+            block_a_diff_lines.update(range(diff_span_a[0], diff_span_a[1]))
+            block_b_diff_lines.update(range(diff_span_b[0], diff_span_b[1]))
+
+            # For pure insertions/deletions, add a line anchor on the "empty" side
+            # so cut_text_hunks_with_context captures context lines there, allowing
+            # align_hunk_pairs to produce a side-by-side hunk instead of an empty column.
+            if diff_span_a[0] == diff_span_a[1] and block_a_lines:
+                block_a_diff_lines.add(min(diff_span_a[0], len(block_a_lines) - 1))
+            if diff_span_b[0] == diff_span_b[1] and block_b_lines:
+                block_b_diff_lines.add(min(diff_span_b[0], len(block_b_lines) - 1))
+    else:
+        # For unmatched blocks there are no diff spans, so we have no choice but to display the whole block.
+        if block_side_a is not None:
+            block_a_diff_lines = set(range(0, len(block_side_a.lines)))
+
+        if block_side_b is not None:
+            block_b_diff_lines = set(range(0, len(block_side_b.lines)))
+
+    return block_a_lines, block_a_diff_lines, block_b_lines, block_b_diff_lines
+
+
 def prepare_diffset_pcode_render(
     diffset: GfxDiffSet,
     normalized_script_blocks_a: dict[Path, list[PcodeBlock]],
@@ -145,38 +188,9 @@ def prepare_diffset_pcode_render(
         block_side_a = _find_pcode_block_by_name(script_a_blocks, block.side_a_name)
         block_side_b = _find_pcode_block_by_name(script_b_blocks, block.side_b_name)
 
-        block_a_lines = [ln.render() for ln in block_side_a.lines] if block_side_a else []
-        block_b_lines = [ln.render() for ln in block_side_b.lines] if block_side_b else []
-        block_b_lines = align_labels_in_text(block_b_lines, anchor_lines=block_a_lines)
-        block_b_lines = align_registers_in_text(block_b_lines, anchor_lines=block_a_lines)
-
-        # Recompute diff spans on aligned lines: block.diff_spans was computed on normalized but
-        # unaligned block content and would reference lines that, after label/register alignment,
-        # no longer actually differ, producing spurious hunks of unchanged content.
-        block_a_diff_lines: set[int] = set()
-        block_b_diff_lines: set[int] = set()
-
-        if block.is_paired():
-            aligned_diff = diff_texts(block_a_lines, block_b_lines)
-
-            for diff_span_a, diff_span_b in aligned_diff.spans:
-                block_a_diff_lines.update(range(diff_span_a[0], diff_span_a[1]))
-                block_b_diff_lines.update(range(diff_span_b[0], diff_span_b[1]))
-
-                # For pure insertions/deletions, add a line anchor on the "empty" side
-                # so cut_text_hunks_with_context captures context lines there, allowing
-                # align_hunk_pairs to produce a side-by-side hunk instead of an empty column.
-                if diff_span_a[0] == diff_span_a[1] and block_a_lines:
-                    block_a_diff_lines.add(min(diff_span_a[0], len(block_a_lines) - 1))
-                if diff_span_b[0] == diff_span_b[1] and block_b_lines:
-                    block_b_diff_lines.add(min(diff_span_b[0], len(block_b_lines) - 1))
-        else:
-            # For unmatched blocks there are no diff spans, so we have no choice but to display the whole block.
-            if block_side_a is not None:
-                block_a_diff_lines = set(range(0, len(block_side_a.lines)))
-
-            if block_side_b is not None:
-                block_b_diff_lines = set(range(0, len(block_side_b.lines)))
+        block_a_lines, block_a_diff_lines, block_b_lines, block_b_diff_lines = _pcode_block_render_data(
+            block, block_side_a, block_side_b
+        )
 
         hunk_pairs = align_hunk_pairs(
             cut_text_hunks_with_context(block_a_lines, block_a_diff_lines, context_length=5, merge=True),
@@ -350,38 +364,13 @@ def prepare_diffset_actionscript_render(
             side_b_resolved = block.side_b_name is None or bool(diff_lines_in_as_source_b)
         else:
             # If we could not resolve ActionScript code at all, we fall back to p-code instead.
-            diff_lines_in_normalized_block_a: set[int] = set()
-            diff_lines_in_normalized_block_b: set[int] = set()
+            block_a_corpus_lines, block_a_diff_lines, block_b_corpus_lines, block_b_diff_lines = (
+                _pcode_block_render_data(block, block_side_a, block_side_b)
+            )
 
-            block_a_corpus_lines = [ln.render() for ln in block_side_a.lines] if block_side_a is not None else []
-            block_b_corpus_lines = [ln.render() for ln in block_side_b.lines] if block_side_b is not None else []
-
-            if block.is_paired():
-                for diff_span_a, diff_span_b in block.diff_spans:
-                    diff_lines_in_normalized_block_a.update(range(diff_span_a[0], diff_span_a[1]))
-                    diff_lines_in_normalized_block_b.update(range(diff_span_b[0], diff_span_b[1]))
-
-                    # For pure insertions/deletions, add a line anchor on the "empty" side
-                    # so cut_text_hunks_with_context captures context lines there, allowing
-                    # align_hunk_pairs to produce a side-by-side hunk instead of an empty column.
-                    if diff_span_a[0] == diff_span_a[1] and block_a_corpus_lines:
-                        diff_lines_in_normalized_block_a.add(min(diff_span_a[0], len(block_a_corpus_lines) - 1))
-                    if diff_span_b[0] == diff_span_b[1] and block_b_corpus_lines:
-                        diff_lines_in_normalized_block_b.add(min(diff_span_b[0], len(block_b_corpus_lines) - 1))
-            else:
-                # For unmatched blocks with no mapped ActionScript source lines, simply display the whole p-code block.
-                # This branch is probably practically dead, even though, in theory, it could happen.
-                if block_side_a is not None:
-                    diff_lines_in_normalized_block_a = set(range(0, len(block_side_a.lines)))
-
-                if block_side_b is not None:
-                    diff_lines_in_normalized_block_b = set(range(0, len(block_side_b.lines)))
-
-            block_a_diff_lines = diff_lines_in_normalized_block_a
-            block_b_diff_lines = diff_lines_in_normalized_block_b
             block_lang = "pcode"
-            side_a_resolved = block.side_a_name is None or bool(diff_lines_in_normalized_block_a)
-            side_b_resolved = block.side_b_name is None or bool(diff_lines_in_normalized_block_b)
+            side_a_resolved = block.side_a_name is None or bool(block_a_diff_lines)
+            side_b_resolved = block.side_b_name is None or bool(block_b_diff_lines)
 
             prologue_messages.append(
                 "[yellow]Unable to map pcode lines to ActionScript source for this block. Falling back to normalized p-code.[/yellow]"
