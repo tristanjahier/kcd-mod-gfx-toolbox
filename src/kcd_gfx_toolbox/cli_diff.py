@@ -346,7 +346,7 @@ def unfold_diff_tree_in_table(tree: GfxDiffTreeNode, table: Table, sort_order: D
         _render_node(child, is_last_child=is_last)
 
 
-def display_block_diff_in_unified_layout(block_diff: RenderableBlockDiff, debug_mode: bool) -> int:
+def print_block_diff_in_unified_layout(block_diff: RenderableBlockDiff, debug_mode: bool) -> int:
     """Print a given block diff in a unified layout."""
     line_count = 0
     block = block_diff.block
@@ -379,7 +379,7 @@ def display_block_diff_in_unified_layout(block_diff: RenderableBlockDiff, debug_
     return line_count
 
 
-def display_block_diff_in_split_layout(block_diff: RenderableBlockDiff, debug_mode: bool) -> int:
+def print_block_diff_in_split_layout(block_diff: RenderableBlockDiff, debug_mode: bool) -> int:
     """Print a given block diff in a split layout (side-by-side)."""
     line_count = 0
     script = block_diff.script
@@ -419,7 +419,7 @@ def display_block_diff_in_split_layout(block_diff: RenderableBlockDiff, debug_mo
     return line_count
 
 
-def display_detailed_diff(
+def print_diff(
     workspace_a: Workspace,
     normalized_script_blocks_a: dict[Path, list[PcodeBlock]],
     workspace_b: Workspace,
@@ -434,7 +434,7 @@ def display_detailed_diff(
     debug_mode: bool = False,
 ):
     """
-    Display line-by-line differences for each modified script block.
+    Print line-by-line differences for each modified script block.
     """
     line_count = 0
 
@@ -478,12 +478,12 @@ def display_detailed_diff(
             line_count += 1
 
         if layout == DiffLayout.UNIFIED:
-            line_count += display_block_diff_in_unified_layout(renderable, debug_mode=debug_mode)
+            line_count += print_block_diff_in_unified_layout(renderable, debug_mode=debug_mode)
         else:
-            line_count += display_block_diff_in_split_layout(renderable, debug_mode=debug_mode)
+            line_count += print_block_diff_in_split_layout(renderable, debug_mode=debug_mode)
 
 
-def display_summary(diffset: GfxDiffSet, sort_order: DiffSortOrder):
+def print_summary(diffset: GfxDiffSet, sort_order: DiffSortOrder):
     console.print(
         f"Summary: "
         f"[yellow]{len(diffset.get_scripts_with_differing_blocks())} scripts modified[/yellow], "
@@ -729,7 +729,7 @@ def command(
         return
 
     if not show_summary_only:
-        display_detailed_diff(
+        print_diff(
             workspace_a,
             normalized_script_blocks_a,
             workspace_b,
@@ -745,4 +745,4 @@ def command(
 
     if not hide_summary:
         console.line()
-        display_summary(diffset, sort_order)
+        print_summary(diffset, sort_order)
