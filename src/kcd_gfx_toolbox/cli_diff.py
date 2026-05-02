@@ -3,6 +3,7 @@
 from __future__ import annotations
 import json
 from typing import Annotated, Literal, cast
+from click.core import ParameterSource
 import typer
 
 from .workspace import Workspace, temp_workspace_name_for_file
@@ -430,7 +431,7 @@ def print_diff(
     sort_order: DiffSortOrder,
     layout: DiffLayout,
     filters: DiffFilter,
-    max_lines: int = 0,
+    max_lines: int | None = None,
     debug_mode: bool = False,
 ):
     """
@@ -460,8 +461,8 @@ def print_diff(
     is_first_iteration = True
 
     for renderable in renderables:
-        if max_lines != 0 and line_count >= max_lines:
-            trunc_msg = f"✀  Diff details truncated at {line_count} lines (soft limit is {max_lines}). Use [italic]--details-truncate=0[/italic] to remove this limit."
+        if max_lines is not None and line_count >= max_lines:
+            trunc_msg = f"✀  Diff output capped after reaching or exceeding {max_lines} lines. Use [italic]--head N[/italic] to raise the cap or [italic]--full[/italic] to remove it."
             if layout == DiffLayout.UNIFIED:
                 console.print(f"[bold yellow]---- {trunc_msg} ----[/bold yellow]")
             else:
@@ -518,6 +519,7 @@ def print_summary(diffset: GfxDiffSet, sort_order: DiffSortOrder):
 
 
 def command(
+    ctx: typer.Context,
     file_a: Annotated[Path, typer.Argument(help="The left (A) file of the comparison.")],
     file_b: Annotated[Path, typer.Argument(help="The right (B) file of the comparison.")],
     ffdec_path: Annotated[
@@ -555,14 +557,17 @@ def command(
     layout: Annotated[
         DiffLayout, typer.Option("--layout", help="Set the view layout for detailed diff.")
     ] = DiffLayout.SPLIT,
-    truncate_detailed_diff: Annotated[
+    diff_max_lines: Annotated[
         int,
         typer.Option(
-            "--details-truncate",
-            min=0,
-            help="Truncate display of diff details after N lines. 0 = unlimited.",
+            "--head",
+            min=1,
+            help="Show only the first N lines of diff (approximate). Option --full disables this limit.",
         ),
     ] = 512,
+    show_full_diff: Annotated[
+        bool, typer.Option("--full", help="Disable the diff output limit, show the full diff.")
+    ] = False,
     sort_order: Annotated[
         DiffSortOrder,
         typer.Option(
@@ -611,6 +616,9 @@ def command(
     except FileNotFoundError as e:
         print_error(e)
         raise typer.Exit(code=1)
+
+    if show_full_diff and ctx.get_parameter_source("diff_max_lines") is ParameterSource.COMMANDLINE:
+        raise typer.BadParameter("Options --head and --full are mutually exclusive.")
 
     if show_summary_only and hide_summary:
         raise typer.BadParameter("Options --summary-only and --no-summary are mutually exclusive.")
@@ -739,7 +747,7 @@ def command(
             sort_order=sort_order,
             layout=layout,
             filters=details_filters,
-            max_lines=truncate_detailed_diff,
+            max_lines=(None if show_full_diff else diff_max_lines),
             debug_mode=debug_mode,
         )
 
