@@ -587,6 +587,12 @@ def command(
     """
     Compare scripts between two GFx files to surface meaningful changes through normalization.
     """
+    if show_full_diff and ctx.get_parameter_source("diff_max_lines") is ParameterSource.COMMANDLINE:
+        raise typer.BadParameter("Options --head and --full are mutually exclusive.")
+
+    if show_summary_only and hide_summary:
+        raise typer.BadParameter("Options --summary-only and --no-summary are mutually exclusive.")
+
     file_a = file_a.resolve()
     file_b = file_b.resolve()
 
@@ -616,12 +622,6 @@ def command(
     except FileNotFoundError as e:
         print_error(e)
         raise typer.Exit(code=1)
-
-    if show_full_diff and ctx.get_parameter_source("diff_max_lines") is ParameterSource.COMMANDLINE:
-        raise typer.BadParameter("Options --head and --full are mutually exclusive.")
-
-    if show_summary_only and hide_summary:
-        raise typer.BadParameter("Options --summary-only and --no-summary are mutually exclusive.")
 
     try:
         details_filters = parse_and_validate_details_filters(filters)
