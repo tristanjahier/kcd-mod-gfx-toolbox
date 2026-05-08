@@ -137,7 +137,8 @@ def command(
             if not is_direct:
                 as_text = f"[dim]{as_text}[/dim]"
 
-            as_line = as_line if as_line is not None else "~"
+            src_line = src_line + 1
+            as_line = (as_line + 1) if as_line is not None else "~"
 
             table.add_row(f"{src_line:>6}", escape(pcode_line.render()), f"{as_line:>6}", as_text, style="on #17171a")
 
