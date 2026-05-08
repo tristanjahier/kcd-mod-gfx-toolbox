@@ -22,7 +22,7 @@ from kcd_gfx_toolbox.swd import (
 from kcd_gfx_toolbox.utils import read_file_lines
 from kcd_gfx_toolbox.workspace import Workspace
 from .core import (
-    DiffHunk,
+    DiffAnnotatedHunk,
     TextHunk,
     align_hunk_pairs,
     cut_text_hunks_with_context,
@@ -513,8 +513,8 @@ def build_split_layout_for_hunk_pair(
     """
     Take a pair of hunks, annotate their differences, and build a SplitLayout Rich renderable component.
     """
-    side_a: DiffHunk | SplitLayoutMessagePane
-    side_b: DiffHunk | SplitLayoutMessagePane
+    side_a: DiffAnnotatedHunk | SplitLayoutMessagePane
+    side_b: DiffAnnotatedHunk | SplitLayoutMessagePane
 
     if block_diff.block.is_paired():
         if block_diff.side_a_resolved and block_diff.side_b_resolved:
@@ -523,11 +523,11 @@ def build_split_layout_for_hunk_pair(
             side_a = SplitLayoutMessagePane(
                 "[yellow]Unable to map pcode lines to ActionScript source on this side.[/yellow]"
             )
-            side_b = DiffHunk.wrap(
+            side_b = DiffAnnotatedHunk.wrap(
                 TextHunk([(ln.reannotate(is_addition=True) if not ln.is_context else ln) for ln in hunk_b])
             )
         elif not block_diff.side_b_resolved:
-            side_a = DiffHunk.wrap(
+            side_a = DiffAnnotatedHunk.wrap(
                 TextHunk([(ln.reannotate(is_deletion=True) if not ln.is_context else ln) for ln in hunk_a])
             )
             side_b = SplitLayoutMessagePane(

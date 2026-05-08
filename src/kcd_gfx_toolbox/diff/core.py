@@ -346,9 +346,11 @@ class TextHunk(list[TextHunkLine]):
         return "\n".join(ln.debug_repr(line_padding) for ln in self)
 
 
-class DiffHunk(list[TextHunk]):
+class DiffAnnotatedHunk(list[TextHunk]):
     """
-    A sequence of TextHunk in the context of a diff, typically alternating between context and differing regions.
+    A higher-level text hunk structure for diff rendering, composed of TextHunk segments
+    representing contiguous lines of the same annotation type, typically alternating between context
+    and changed regions.
     """
 
     def lines(self) -> list[TextHunkLine]:
@@ -677,14 +679,14 @@ def align_hunk_pairs(hunks_1: list[TextHunk], hunks_2: list[TextHunk]) -> list[t
     return [align_hunk_pair_edge_context(h1, h2) for h1, h2 in hunk_pairs]
 
 
-def hunks_are_equal(hunk_1: TextHunk | DiffHunk, hunk_2: TextHunk | DiffHunk) -> bool:
+def hunks_are_equal(hunk_1: TextHunk | DiffAnnotatedHunk, hunk_2: TextHunk | DiffAnnotatedHunk) -> bool:
     """Compare two hunks and return True if their texts are equal, regardless of line numbers."""
-    lines_1 = hunk_1.lines() if isinstance(hunk_1, DiffHunk) else hunk_1
-    lines_2 = hunk_2.lines() if isinstance(hunk_2, DiffHunk) else hunk_2
+    lines_1 = hunk_1.lines() if isinstance(hunk_1, DiffAnnotatedHunk) else hunk_1
+    lines_2 = hunk_2.lines() if isinstance(hunk_2, DiffAnnotatedHunk) else hunk_2
     return [line.text for line in lines_1] == [line.text for line in lines_2]
 
 
-def diff_text_hunks(hunk_1: TextHunk, hunk_2: TextHunk) -> tuple[DiffHunk, DiffHunk]:
+def diff_text_hunks(hunk_1: TextHunk, hunk_2: TextHunk) -> tuple[DiffAnnotatedHunk, DiffAnnotatedHunk]:
     """
     Compare two text hunks and return a pair of annotated DiffHunk.
 
@@ -694,8 +696,8 @@ def diff_text_hunks(hunk_1: TextHunk, hunk_2: TextHunk) -> tuple[DiffHunk, DiffH
     Context segments are strictly equal. Segments can be empty (for pure deletions or pure additions).
     This data structure helps displaying side-by-side diffs.
     """
-    diffed_hunk_1 = DiffHunk()
-    diffed_hunk_2 = DiffHunk()
+    diffed_hunk_1 = DiffAnnotatedHunk()
+    diffed_hunk_2 = DiffAnnotatedHunk()
 
     hunk_1_lines: list[str] = [line.text for line in hunk_1]
     hunk_2_lines: list[str] = [line.text for line in hunk_2]

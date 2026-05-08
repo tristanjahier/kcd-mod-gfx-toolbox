@@ -2,7 +2,7 @@ import re
 import pytest
 from pathlib import Path
 from kcd_gfx_toolbox.diff.core import (
-    DiffHunk,
+    DiffAnnotatedHunk,
     FileDiff,
     TextHunk,
     TextHunkLine,
@@ -2823,7 +2823,7 @@ def test_diff_text_hunks():
     # 2-3 lines replaced in the middle
     # 1 line deleted near the end
 
-    assert diffed_hunk_1 == DiffHunk(
+    assert diffed_hunk_1 == DiffAnnotatedHunk(
         [
             TextHunk(),
             TextHunk(
@@ -2853,7 +2853,7 @@ def test_diff_text_hunks():
         ]
     )
 
-    assert diffed_hunk_2 == DiffHunk(
+    assert diffed_hunk_2 == DiffAnnotatedHunk(
         [
             TextHunk(
                 [

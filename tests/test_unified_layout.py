@@ -4,7 +4,7 @@ import pytest
 from rich.console import Console
 from rich.text import Text
 
-from kcd_gfx_toolbox.diff.core import DiffHunk, TextHunk, TextHunkLine
+from kcd_gfx_toolbox.diff.core import DiffAnnotatedHunk, TextHunk, TextHunkLine
 from kcd_gfx_toolbox.diff.unified_layout import UnifiedLayout
 
 
@@ -42,7 +42,7 @@ def test_UnifiedLayout_emits_only_headers_when_there_are_no_hunk_pairs():
 
 
 def test_UnifiedLayout_skips_pairs_where_both_sides_are_empty():
-    layout = UnifiedLayout("foo:bar", "foo:bar", [(DiffHunk(), DiffHunk())])
+    layout = UnifiedLayout("foo:bar", "foo:bar", [(DiffAnnotatedHunk(), DiffAnnotatedHunk())])
     assert _plain_lines(layout) == [
         "--- a/foo:bar",
         "+++ b/foo:bar",
@@ -50,14 +50,14 @@ def test_UnifiedLayout_skips_pairs_where_both_sides_are_empty():
 
 
 def test_UnifiedLayout_emits_at_at_with_absolute_block_indices():
-    diffed_a = DiffHunk(
+    diffed_a = DiffAnnotatedHunk(
         [
             TextHunk([_hunk_ctx(8, "ctx0"), _hunk_ctx(9, "ctx1")]),
             TextHunk([_hunk_del(10, "old1"), _hunk_del(11, "old2")]),
             TextHunk([_hunk_ctx(12, "ctx2")]),
         ]
     )
-    diffed_b = DiffHunk(
+    diffed_b = DiffAnnotatedHunk(
         [
             TextHunk([_hunk_ctx(20, "ctx0"), _hunk_ctx(21, "ctx1")]),
             TextHunk([_hunk_add(22, "new1")]),
@@ -82,8 +82,8 @@ def test_UnifiedLayout_emits_at_at_with_absolute_block_indices():
 
 
 def test_UnifiedLayout_pure_insertion_uses_zero_zero_on_side_a():
-    diffed_a = DiffHunk([TextHunk([])])
-    diffed_b = DiffHunk([TextHunk([_hunk_add(4, "n1"), _hunk_add(5, "n2")])])
+    diffed_a = DiffAnnotatedHunk([TextHunk([])])
+    diffed_b = DiffAnnotatedHunk([TextHunk([_hunk_add(4, "n1"), _hunk_add(5, "n2")])])
     layout = UnifiedLayout(None, "foo:bar", [(diffed_a, diffed_b)])
 
     assert _plain_lines(layout) == [
@@ -96,8 +96,8 @@ def test_UnifiedLayout_pure_insertion_uses_zero_zero_on_side_a():
 
 
 def test_UnifiedLayout_pure_deletion_uses_zero_zero_on_side_b():
-    diffed_a = DiffHunk([TextHunk([_hunk_del(0, "o1"), _hunk_del(1, "o2")])])
-    diffed_b = DiffHunk([TextHunk([])])
+    diffed_a = DiffAnnotatedHunk([TextHunk([_hunk_del(0, "o1"), _hunk_del(1, "o2")])])
+    diffed_b = DiffAnnotatedHunk([TextHunk([])])
     layout = UnifiedLayout("foo:bar", None, [(diffed_a, diffed_b)])
 
     assert _plain_lines(layout) == [
@@ -111,8 +111,12 @@ def test_UnifiedLayout_pure_deletion_uses_zero_zero_on_side_b():
 
 def test_UnifiedLayout_escapes_rich_markup_in_line_text():
     # Lines with bracket characters must not be parsed as Rich markup.
-    diffed_a = DiffHunk([TextHunk([_hunk_del(0, "[bold]hi[/bold]")]), TextHunk([_hunk_ctx(1, "[dim]bye[/dim]")])])
-    diffed_b = DiffHunk([TextHunk([_hunk_add(0, "[red]bye[/red]")]), TextHunk([_hunk_ctx(1, "[dim]bye[/dim]")])])
+    diffed_a = DiffAnnotatedHunk(
+        [TextHunk([_hunk_del(0, "[bold]hi[/bold]")]), TextHunk([_hunk_ctx(1, "[dim]bye[/dim]")])]
+    )
+    diffed_b = DiffAnnotatedHunk(
+        [TextHunk([_hunk_add(0, "[red]bye[/red]")]), TextHunk([_hunk_ctx(1, "[dim]bye[/dim]")])]
+    )
     layout = UnifiedLayout("foo:bar", "foo:bar", [(diffed_a, diffed_b)])
 
     assert _plain_lines(layout) == [
@@ -130,8 +134,8 @@ def test_UnifiedLayout_escapes_rich_markup_in_line_text():
     "max_width,extend_factor", [(randint(80, 240), randint(1, 5) + randint(1, 9) / 10) for _ in range(5)]
 )
 def test_UnifiedLayout_compute_height_handles_word_wrap(max_width, extend_factor):
-    diffed_a = DiffHunk([TextHunk([_hunk_del(0, "x" * (max_width - 1))])])
-    diffed_b = DiffHunk([TextHunk([_hunk_add(0, "x" * floor(max_width * extend_factor))])])
+    diffed_a = DiffAnnotatedHunk([TextHunk([_hunk_del(0, "x" * (max_width - 1))])])
+    diffed_b = DiffAnnotatedHunk([TextHunk([_hunk_add(0, "x" * floor(max_width * extend_factor))])])
     layout = UnifiedLayout("foo:bar", "foo:bar", [(diffed_a, diffed_b)])
 
     console = Console(width=max_width)
@@ -140,8 +144,8 @@ def test_UnifiedLayout_compute_height_handles_word_wrap(max_width, extend_factor
 
 
 def test_UnifiedLayout_yields_text_objects_via_rich_console_protocol():
-    diffed_a = DiffHunk([TextHunk([_hunk_del(0, "o")])])
-    diffed_b = DiffHunk([TextHunk([_hunk_add(0, "n")])])
+    diffed_a = DiffAnnotatedHunk([TextHunk([_hunk_del(0, "o")])])
+    diffed_b = DiffAnnotatedHunk([TextHunk([_hunk_add(0, "n")])])
     layout = UnifiedLayout("foo:bar", "foo:bar", [(diffed_a, diffed_b)])
 
     console = Console(width=80)
@@ -153,8 +157,8 @@ def test_UnifiedLayout_yields_text_objects_via_rich_console_protocol():
 
 
 def test_UnifiedLayout_caches_last_render_height_after_render():
-    diffed_a = DiffHunk([TextHunk([_hunk_ctx(0, "x")])])
-    diffed_b = DiffHunk([TextHunk([_hunk_ctx(0, "x")])])
+    diffed_a = DiffAnnotatedHunk([TextHunk([_hunk_ctx(0, "x")])])
+    diffed_b = DiffAnnotatedHunk([TextHunk([_hunk_ctx(0, "x")])])
     layout = UnifiedLayout("foo:bar", "foo:bar", [(diffed_a, diffed_b)])
 
     console = Console(width=80, record=True)
@@ -163,8 +167,8 @@ def test_UnifiedLayout_caches_last_render_height_after_render():
 
 
 def test_UnifiedLayout_prevents_calling_last_render_height_before_render():
-    diffed_a = DiffHunk([TextHunk([_hunk_ctx(0, "x")])])
-    diffed_b = DiffHunk([TextHunk([_hunk_ctx(0, "x")])])
+    diffed_a = DiffAnnotatedHunk([TextHunk([_hunk_ctx(0, "x")])])
+    diffed_b = DiffAnnotatedHunk([TextHunk([_hunk_ctx(0, "x")])])
     layout = UnifiedLayout("foo:bar", "foo:bar", [(diffed_a, diffed_b)])
 
     with pytest.raises(RuntimeError, match="Cannot call UnifiedLayout.get_last_render_height"):

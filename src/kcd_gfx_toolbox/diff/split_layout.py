@@ -15,7 +15,7 @@ from pygments.style import Style as PygmentsStyle
 from pygments.styles.material import MaterialStyle as DefaultPygmentStyle
 from pygments import lex as pygments_lex
 
-from .core import DiffHunk, TextHunkLine
+from .core import DiffAnnotatedHunk, TextHunkLine
 
 
 def _highlight_line(line: str, lexer: Lexer, pygments_style: type[PygmentsStyle]) -> Text:
@@ -109,8 +109,8 @@ class SplitLayout:
     @classmethod
     def from_pair(
         cls,
-        left: DiffHunk | SplitLayoutMessagePane,
-        right: DiffHunk | SplitLayoutMessagePane,
+        left: DiffAnnotatedHunk | SplitLayoutMessagePane,
+        right: DiffAnnotatedHunk | SplitLayoutMessagePane,
         **kwargs,
     ) -> Self:
         if not isinstance(left, SplitLayoutMessagePane):
@@ -129,14 +129,14 @@ class SplitLayout:
 class SplitLayoutCodePane(SplitLayoutPane):
     def __init__(
         self,
-        diff_hunk: DiffHunk,
+        diffed_hunk: DiffAnnotatedHunk,
         background_color: str | None = "#17171a",
         padding: PaddingDimensions = (1, 1),
         word_wrap: bool = False,
         syntax_lexer: Lexer | None = None,
         pygments_style: type[PygmentsStyle] | None = None,
     ):
-        self.diff_hunk = diff_hunk
+        self.diffed_hunk = diffed_hunk
         self.background_color = background_color
         self.padding = padding
         self.word_wrap = word_wrap
@@ -154,7 +154,7 @@ class SplitLayoutCodePane(SplitLayoutPane):
 
         self._gutter_width_cache = max(
             self.gutter_min_width,
-            max((len(str(line.number)) for line in self.diff_hunk.lines()), default=0),
+            max((len(str(line.number)) for line in self.diffed_hunk.lines()), default=0),
         )
 
         return self._gutter_width_cache
@@ -210,7 +210,7 @@ class SplitLayoutCodePane(SplitLayoutPane):
     def render_table_rows(self):
         if self.rows is None:
             self.rows = []
-            for line in self.diff_hunk.lines():
+            for line in self.diffed_hunk.lines():
                 self.rows.append(self.render_text_hunk_line(line))
 
     @classmethod
@@ -220,7 +220,7 @@ class SplitLayoutCodePane(SplitLayoutPane):
         left.rows = []
         right.rows = []
 
-        for left_segment, right_segment in zip(left.diff_hunk, right.diff_hunk):
+        for left_segment, right_segment in zip(left.diffed_hunk, right.diffed_hunk):
             for left_line, right_line in zip_longest(left_segment, right_segment):
                 left_height = 0
                 right_height = 0

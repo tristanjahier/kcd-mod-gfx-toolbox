@@ -6,7 +6,7 @@ from rich.console import Console, ConsoleOptions, RenderResult
 from rich.markup import escape
 from rich.text import Text
 
-from .core import DiffHunk
+from .core import DiffAnnotatedHunk
 from .unified_format import (
     unidiff_context_line,
     unidiff_deletion_line,
@@ -23,7 +23,7 @@ class UnifiedLayout:
         self,
         side_a_path: str | None,
         side_b_path: str | None,
-        hunk_pairs: list[tuple[DiffHunk, DiffHunk]],
+        hunk_pairs: list[tuple[DiffAnnotatedHunk, DiffAnnotatedHunk]],
     ):
         if side_a_path is None and side_b_path is None:
             raise ValueError("At least one side must be defined.")
