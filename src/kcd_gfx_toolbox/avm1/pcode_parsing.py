@@ -99,6 +99,9 @@ class PcodeBlock:
 
         return "\n".join(text_lines)
 
+    def __len__(self) -> int:
+        return len(self.lines)
+
 
 def tokenize_line(line: str) -> list[tuple[int, str]]:
     """

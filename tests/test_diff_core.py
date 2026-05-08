@@ -66,6 +66,23 @@ def _sample_text_hunk(text: str) -> TextHunk:
     return TextHunk(_hunk_select(i, line) for i, line in enumerate(sample_text_lines(text), start=0))
 
 
+def _lines_to_spans(selection: list[int] | set[int]) -> list[tuple[int, int]]:
+    """Convert a list of line indices to spans."""
+    spans: list[tuple[int, int]] = []
+    current_sequence: list[int] = []
+
+    for selected_line in selection:
+        if not current_sequence or current_sequence[-1] == (selected_line - 1):
+            current_sequence.append(selected_line)
+            continue
+
+        spans.append((current_sequence[0], current_sequence[-1] + 1))
+        current_sequence = [selected_line]
+
+    spans.append((current_sequence[0], current_sequence[-1] + 1))
+    return spans
+
+
 def test_diff_file_trees_basic_with_no_differences(tmp_path: Path):
     _create_fake_file_tree(
         tmp_path,
@@ -1045,7 +1062,7 @@ def test_cut_text_hunks_with_context():
         Subtract
     """)
 
-    hunks = cut_text_hunks_with_context(sample, [1, 6, 7, 8, 19, 20], context_length=3, merge=False)
+    hunks = cut_text_hunks_with_context(sample, _lines_to_spans([1, 6, 7, 8, 19, 20]), context_length=3, merge=False)
 
     assert hunks == [
         TextHunk(
@@ -1090,7 +1107,7 @@ def test_cut_text_hunks_with_context():
     ]
 
 
-def test_cut_text_hunks_with_context_with_outofbounds_selection():
+def test_cut_text_hunks_with_context_with_outofbounds_span():
     sample = sample_text_lines("""
         Push register1, "m_DisplayedData", 0.0, "Array"
         NewObject
@@ -1100,10 +1117,23 @@ def test_cut_text_hunks_with_context_with_outofbounds_selection():
     """)
 
     with pytest.raises(ValueError, match=re.escape("Line selection contains an out-of-bounds span: [-1:3].")):
-        cut_text_hunks_with_context(sample, [-1, 0, 1, 2])
+        cut_text_hunks_with_context(sample, _lines_to_spans([-1, 0, 1, 2]))
 
     with pytest.raises(ValueError, match=re.escape("Line selection contains an out-of-bounds span: [1:6].")):
-        cut_text_hunks_with_context(sample, [1, 2, 3, 4, 5])
+        cut_text_hunks_with_context(sample, _lines_to_spans([1, 2, 3, 4, 5]))
+
+
+def test_cut_text_hunks_with_context_with_invalid_span():
+    sample = sample_text_lines("""
+        Push register1, "m_DisplayedData", 0.0, "Array"
+        NewObject
+        Push -1
+        SetMember
+        Push register2, "GetMoney"
+    """)
+
+    with pytest.raises(ValueError, match=re.escape("Provided line span is invalid: [3:1].")):
+        cut_text_hunks_with_context(sample, [(3, 1)])
 
 
 def test_cut_text_hunks_with_context_with_smaller_context():
@@ -1136,7 +1166,7 @@ def test_cut_text_hunks_with_context_with_smaller_context():
         Subtract
     """)
 
-    hunks = cut_text_hunks_with_context(sample, [1, 6, 7, 8, 19, 20], context_length=1, merge=False)
+    hunks = cut_text_hunks_with_context(sample, _lines_to_spans([1, 6, 7, 8, 19, 20]), context_length=1, merge=False)
 
     assert hunks == [
         TextHunk(
@@ -1201,7 +1231,7 @@ def test_cut_text_hunks_with_context_with_unordered_set_selection():
         Subtract
     """)
 
-    hunks = cut_text_hunks_with_context(sample, {2, 13, 6, 0}, context_length=2, merge=True)
+    hunks = cut_text_hunks_with_context(sample, _lines_to_spans([2, 13, 6, 0]), context_length=2, merge=True)
 
     assert hunks == [
         TextHunk(
@@ -1269,7 +1299,7 @@ def test_cut_text_hunks_with_context_merges_adjacent_and_overlapping_hunks():
         SetMember
     """)
 
-    hunks = cut_text_hunks_with_context(sample, [1, 6, 7, 8, 19, 20, 27], context_length=3, merge=True)
+    hunks = cut_text_hunks_with_context(sample, _lines_to_spans([1, 6, 7, 8, 19, 20, 27]), context_length=3, merge=True)
 
     assert hunks == [
         TextHunk(
@@ -1324,7 +1354,7 @@ def test_cut_text_hunks_with_context_with_edge_selection():
         Push register2, "GetMoney"
     """)
 
-    hunks = cut_text_hunks_with_context(sample, [0], context_length=2, merge=False)
+    hunks = cut_text_hunks_with_context(sample, _lines_to_spans([0]), context_length=2, merge=False)
 
     assert hunks == [
         TextHunk(
@@ -1336,13 +1366,13 @@ def test_cut_text_hunks_with_context_with_edge_selection():
         )
     ]
 
-    hunks = cut_text_hunks_with_context(sample, [4], context_length=2, merge=False)
+    hunks = cut_text_hunks_with_context(sample, _lines_to_spans([4]), context_length=2, merge=False)
 
     assert hunks == [
         TextHunk([_hunk_ctx(2, "Push -1"), _hunk_ctx(3, "SetMember"), _hunk_select(4, 'Push register2, "GetMoney"')])
     ]
 
-    hunks = cut_text_hunks_with_context(sample, [3, 4], context_length=2, merge=False)
+    hunks = cut_text_hunks_with_context(sample, _lines_to_spans([3, 4]), context_length=2, merge=False)
 
     assert hunks == [
         TextHunk(
@@ -1378,7 +1408,7 @@ def test_cut_text_hunks_with_context_with_exceeding_context():
     """)
 
     # Demanded context goes beyond the start of the sample text.
-    hunks = cut_text_hunks_with_context(sample, [1], context_length=2, merge=False)
+    hunks = cut_text_hunks_with_context(sample, _lines_to_spans([1]), context_length=2, merge=False)
 
     assert hunks == [
         TextHunk(
@@ -1392,7 +1422,7 @@ def test_cut_text_hunks_with_context_with_exceeding_context():
     ]
 
     # Demanded context goes beyond the end of the sample text.
-    hunks = cut_text_hunks_with_context(sample, [3], context_length=2, merge=False)
+    hunks = cut_text_hunks_with_context(sample, _lines_to_spans([3]), context_length=2, merge=False)
 
     assert hunks == [
         TextHunk(
@@ -1406,7 +1436,7 @@ def test_cut_text_hunks_with_context_with_exceeding_context():
     ]
 
     # Demanded context goes beyond both sample text bounds.
-    hunks = cut_text_hunks_with_context(sample, [2], context_length=5, merge=False)
+    hunks = cut_text_hunks_with_context(sample, _lines_to_spans([2]), context_length=5, merge=False)
 
     assert hunks == [
         TextHunk(
@@ -1416,6 +1446,29 @@ def test_cut_text_hunks_with_context_with_exceeding_context():
                 _hunk_select(2, "Push -1"),
                 _hunk_ctx(3, "SetMember"),
                 _hunk_ctx(4, 'Push register2, "GetMoney"'),
+            ]
+        )
+    ]
+
+
+def test_cut_text_hunks_with_context_with_empty_spans():
+    sample = sample_text_lines("""
+        Push register1, "m_DisplayedData", 0.0, "Array"
+        NewObject
+        Push -1
+        SetMember
+        Push register2, "GetMoney"
+    """)
+
+    hunks = cut_text_hunks_with_context(sample, [(2, 2)], context_length=2, merge=False)
+
+    assert hunks == [
+        TextHunk(
+            [
+                _hunk_ctx(0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+                _hunk_ctx(1, "NewObject"),
+                _hunk_ctx(2, "Push -1"),
+                _hunk_ctx(3, "SetMember"),
             ]
         )
     ]
@@ -1720,8 +1773,10 @@ def test_align_hunk_pair_edge_context_with_context_only():
         ]
     )
 
-    with pytest.raises(AssertionError):
-        align_hunk_pair_edge_context(hunk_1, hunk_2)
+    aligned_hunk_1, aligned_hunk_2 = align_hunk_pair_edge_context(hunk_1, hunk_2)
+
+    assert aligned_hunk_1 == hunk_1
+    assert aligned_hunk_2 == hunk_2
 
 
 def test_align_hunk_pairs_does_not_merge_non_adjacent_hunks():
@@ -1736,8 +1791,8 @@ def test_align_hunk_pairs_does_not_merge_non_adjacent_hunks():
     side_b[5] = "DIFF_B_FIRST"
     side_b[25] = "DIFF_B_SECOND"
 
-    hunks_a = cut_text_hunks_with_context(side_a, [5, 25], context_length=5, merge=True)
-    hunks_b = cut_text_hunks_with_context(side_b, [5, 25], context_length=5, merge=True)
+    hunks_a = cut_text_hunks_with_context(side_a, _lines_to_spans([5, 25]), context_length=5, merge=True)
+    hunks_b = cut_text_hunks_with_context(side_b, _lines_to_spans([5, 25]), context_length=5, merge=True)
     assert len(hunks_a) == 2 and len(hunks_b) == 2  # sanity check: not pre-merged by cut_text_hunks
 
     pairs = align_hunk_pairs(hunks_a, hunks_b)

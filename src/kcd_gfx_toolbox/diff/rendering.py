@@ -54,6 +54,28 @@ class DiffLayout(StrEnum):
     SPLIT = "split"
 
 
+@dataclass(frozen=True, slots=True)
+class RenderDiffSpanPair:
+    """
+    Represent a pair of diff spans to render with two sides (A and B).
+    Pairing is loose so that it can represent unmatched blocks spans.
+    """
+
+    a: tuple[int, int] | None
+    b: tuple[int, int] | None
+
+    def __post_init__(self):
+        if self.a is None and self.b is None:
+            raise ValueError(f"{self.__class__.__name__} must have at least one side defined.")
+
+    def __iter__(self):
+        yield self.a
+        yield self.b
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(a={self.a}, b={self.b})"
+
+
 def get_sorted_and_filtered_script_block_pairs(
     diffset: GfxDiffSet, sort_order: DiffSortOrder, filters: DiffFilter
 ) -> list[tuple[GfxScript, GfxScriptBlock]]:
@@ -120,45 +142,32 @@ def _find_pcode_block_by_name(blocks: Iterable, name: str | None) -> PcodeBlock 
 
 def _pcode_block_render_data(
     block: GfxScriptBlock, block_side_a: PcodeBlock | None, block_side_b: PcodeBlock | None
-) -> tuple[list[str], set[int], list[str], set[int]]:
+) -> tuple[list[str], list[str], list[RenderDiffSpanPair]]:
     """
     For a given block, align side B's labels and registers to side A, compute the differences,
-    then return plain-text block lines and anchor line indices for each side.
+    then return plain-text block lines and diff spans for each side.
     """
     block_a_lines = [ln.render() for ln in block_side_a.lines] if block_side_a else []
     block_b_lines = [ln.render() for ln in block_side_b.lines] if block_side_b else []
     block_b_lines = align_labels_in_text(block_b_lines, anchor_lines=block_a_lines)
     block_b_lines = align_registers_in_text(block_b_lines, anchor_lines=block_a_lines)
 
-    block_a_anchors: set[int] = set()
-    block_b_anchors: set[int] = set()
+    diff_spans: list[RenderDiffSpanPair] = []
 
     if block.is_paired():
         # Recompute diff spans on aligned lines: block.diff_spans was computed on normalized but
         # unaligned block content and would reference lines that, after label/register alignment,
         # no longer actually differ, producing spurious hunks of unchanged content.
-        aligned_diff = diff_texts(block_a_lines, block_b_lines)
-
-        for diff_span_a, diff_span_b in aligned_diff.spans:
-            block_a_anchors.update(range(diff_span_a[0], diff_span_a[1]))
-            block_b_anchors.update(range(diff_span_b[0], diff_span_b[1]))
-
-            # For pure insertions/deletions, add a line anchor on the "empty" side
-            # so cut_text_hunks_with_context captures context lines there, allowing
-            # align_hunk_pairs to produce a side-by-side hunk instead of an empty column.
-            if diff_span_a[0] == diff_span_a[1] and block_a_lines:
-                block_a_anchors.add(min(diff_span_a[0], len(block_a_lines) - 1))
-            if diff_span_b[0] == diff_span_b[1] and block_b_lines:
-                block_b_anchors.add(min(diff_span_b[0], len(block_b_lines) - 1))
+        diff_spans = [RenderDiffSpanPair(a, b) for a, b in diff_texts(block_a_lines, block_b_lines).spans]
     else:
         # For unmatched blocks there are no diff spans, so we have no choice but to display the whole block.
         if block_side_a is not None:
-            block_a_anchors = set(range(0, len(block_side_a.lines)))
+            diff_spans.append(RenderDiffSpanPair(a=(0, len(block_side_a)), b=None))
 
         if block_side_b is not None:
-            block_b_anchors = set(range(0, len(block_side_b.lines)))
+            diff_spans.append(RenderDiffSpanPair(a=None, b=(0, len(block_side_b))))
 
-    return block_a_lines, block_a_anchors, block_b_lines, block_b_anchors
+    return block_a_lines, block_b_lines, diff_spans
 
 
 def prepare_diffset_pcode_render(
@@ -188,13 +197,15 @@ def prepare_diffset_pcode_render(
         block_side_a = _find_pcode_block_by_name(script_a_blocks, block.side_a_name)
         block_side_b = _find_pcode_block_by_name(script_b_blocks, block.side_b_name)
 
-        block_a_lines, block_a_diff_lines, block_b_lines, block_b_diff_lines = _pcode_block_render_data(
-            block, block_side_a, block_side_b
-        )
+        block_a_lines, block_b_lines, diff_spans = _pcode_block_render_data(block, block_side_a, block_side_b)
 
         hunk_pairs = align_hunk_pairs(
-            cut_text_hunks_with_context(block_a_lines, block_a_diff_lines, context_length=5, merge=True),
-            cut_text_hunks_with_context(block_b_lines, block_b_diff_lines, context_length=5, merge=True),
+            cut_text_hunks_with_context(
+                block_a_lines, [ds.a for ds in diff_spans if ds.a is not None], context_length=5, merge=True
+            ),
+            cut_text_hunks_with_context(
+                block_b_lines, [ds.b for ds in diff_spans if ds.b is not None], context_length=5, merge=True
+            ),
         )
 
         renderables.append(
@@ -209,6 +220,121 @@ def prepare_diffset_pcode_render(
         )
 
     return renderables
+
+
+def _build_block_source_map(
+    pcode_block: PcodeBlock | None, script_source_map: dict[int, int | None]
+) -> dict[int, int | None]:
+    """
+    Build a denser source map for a p-code block from the SWD-extracted sparse source map.
+
+    Gaps in ActionScript source lines coverage is "forward-filled".
+    """
+    if pcode_block is None:
+        return {}
+
+    block_first_line = min(pcode_block.lines[0].source_lines)
+    block_last_line = max(pcode_block.lines[-1].source_lines)
+
+    # Mapped lines in ActionScript are sparse. Simple naive improvement: propagate mapped
+    # lines to subsequent unmapped lines, within the boundaries of the block.
+    return propagate_mapped_lines_to_subsequent_unmapped_lines(
+        {k: v for k, v in script_source_map.items() if block_first_line <= k <= block_last_line}
+    )
+
+
+def _convert_span_from_normalized_pcode_to_raw(span: tuple[int, int], pcode: PcodeBlock) -> tuple[int, int]:
+    """
+    Convert a normalized p-code span to a raw p-code relative span.
+
+    When multiple raw lines were collapsed into a single one through normalization, it creates
+    an ambiguous case and this function cannot resolve the exact original diff span.
+    It will include the whole collapsed line source span.
+    """
+    if len(pcode) == 0:
+        raise ValueError("P-code block must not be empty.")
+    if span[0] > span[1] or span[0] < 0 or span[1] > len(pcode):
+        raise ValueError(f"Provided line span is invalid: {span!r}")
+
+    if span[0] == span[1]:  # zero-width span (= anchor for pure deletions/insertions)
+        # A zero-width span at the very end of a block references a line index
+        # that is out of bounds. However it is a valid span in a diff context.
+        if span[0] == len(pcode):
+            src_line = merge_pcode_lines_sources(pcode.lines[-1])[-1]
+            return (src_line + 1, src_line + 1)
+
+        src_line = merge_pcode_lines_sources(pcode.lines[span[0]])[0]
+        return (src_line, src_line)
+
+    src_lines = merge_pcode_lines_sources(*pcode.lines[span[0] : span[1]])
+    return (src_lines[0], src_lines[-1] + 1)
+
+
+def _convert_span_from_pcode_to_actionscript(
+    span: tuple[int, int], source_map: dict[int, int | None], fallback_window: int = 10
+) -> tuple[int, int] | None:
+    """
+    Convert a p-code span to an ActionScript relative span.
+
+    The function expects the source map to have been forward-filled to work better.
+    It returns None if the ActionScript line span could not be resolved.
+    """
+
+    def _backward_lookup(start_ln: int) -> int | None:
+        ln = start_ln
+        while ln > (start_ln - fallback_window) and ln >= 0:
+            if (srcln := source_map.get(ln)) is not None:
+                return srcln
+            ln -= 1
+        return None
+
+    def _forward_lookup(start_ln: int) -> int | None:
+        ln = start_ln
+        while ln < (start_ln + fallback_window):
+            if (srcln := source_map.get(ln)) is not None:
+                return srcln
+            ln += 1
+        return None
+
+    if not source_map or all(v is None for v in source_map.values()):
+        return None
+
+    # Zero-width span (= anchor for pure deletions/insertions)
+    if span[0] == span[1]:
+        if span[0] > (last_block_line := max(source_map.keys())):
+            # The span anchor is at the very end of the block.
+            end = source_map.get(last_block_line)
+
+            if end is None:  # If unmapped, look for a mapped line backwards.
+                end = _backward_lookup(last_block_line - 1)
+
+            return (end + 1, end + 1) if end is not None else None
+
+        anchor = source_map.get(span[0])
+
+        if anchor is None:  # If unmapped, look for a mapped line forwards.
+            anchor = _forward_lookup(span[0] + 1)
+
+        return (anchor, anchor) if anchor is not None else None
+
+    start = source_map.get(span[0])
+
+    if start is None:  # If unmapped, look for a mapped line outwards.
+        start = _backward_lookup(span[0] - 1)
+    if start is None:  # If still unmapped, look for a mapped line inwards.
+        start = _forward_lookup(span[0] + 1)
+
+    end_inclusive = source_map.get(span[1] - 1)
+
+    if end_inclusive is None:  # If unmapped, look for a mapped line outwards.
+        end_inclusive = _forward_lookup(span[1])
+    if end_inclusive is None:  # If still unmapped, look for a mapped line inwards.
+        end_inclusive = _backward_lookup(span[1] - 2)
+
+    if start is not None and end_inclusive is not None:
+        return (start, end_inclusive + 1)
+
+    return None
 
 
 def prepare_diffset_actionscript_render(
@@ -274,49 +400,48 @@ def prepare_diffset_actionscript_render(
         if script_b_name not in file_b_pcode_to_as_line_map:
             raise RuntimeError(f"Script {script_b_name!r} not found in SWD file.")
 
-        script_a_pcode_to_as = file_a_pcode_to_as_line_map[script_a_name]
-        script_b_pcode_to_as = file_b_pcode_to_as_line_map[script_b_name]
+        diff_spans_in_as_source: list[RenderDiffSpanPair] = []
 
-        # Prepare source line mapping from normalized p-code to raw p-code.
-        # Mapped lines in ActionScript are sparse. Simple naive improvement: propagate mapped
-        # lines to subsequent unmapped lines, within the boundaries of the block.
-        block_a_pcode_to_as: dict[int, int | None] = {}
-        block_b_pcode_to_as: dict[int, int | None] = {}
-
-        if block_side_a is not None:
-            block_a_first_line = min(block_side_a.lines[0].source_lines)
-            block_a_last_line = max(block_side_a.lines[-1].source_lines)
-            block_a_pcode_to_as = propagate_mapped_lines_to_subsequent_unmapped_lines(
-                {k: v for k, v in script_a_pcode_to_as.items() if block_a_first_line <= k <= block_a_last_line}
-            )
-
-        if block_side_b is not None:
-            block_b_first_line = min(block_side_b.lines[0].source_lines)
-            block_b_last_line = max(block_side_b.lines[-1].source_lines)
-            block_b_pcode_to_as = propagate_mapped_lines_to_subsequent_unmapped_lines(
-                {k: v for k, v in script_b_pcode_to_as.items() if block_b_first_line <= k <= block_b_last_line}
-            )
-
-        # From normalized diff spans, retrieve the source (raw) p-code lines that are differing.
-        diff_lines_in_raw_block_a: set[int] = set()
-        diff_lines_in_raw_block_b: set[int] = set()
+        # Prepare source line mapping from raw p-code to ActionScript.
+        block_a_pcode_to_as: dict[int, int | None] = _build_block_source_map(
+            block_side_a, file_a_pcode_to_as_line_map[script_a_name]
+        )
+        block_b_pcode_to_as: dict[int, int | None] = _build_block_source_map(
+            block_side_b, file_b_pcode_to_as_line_map[script_b_name]
+        )
 
         if block.is_paired():
-            for diff_span_a, diff_span_b in block.diff_spans:
-                for pcode_line in block_side_a.lines[diff_span_a[0] : diff_span_a[1]]:
-                    diff_lines_in_raw_block_a.update(pcode_line.source_lines)
+            assert block_side_a is not None
+            assert block_side_b is not None
 
-                for pcode_line in block_side_b.lines[diff_span_b[0] : diff_span_b[1]]:
-                    diff_lines_in_raw_block_b.update(pcode_line.source_lines)
-        else:
-            if block_side_a is not None:
-                diff_lines_in_raw_block_a = set(merge_pcode_lines_sources(*block_side_a.lines))
-            if block_side_b is not None:
-                diff_lines_in_raw_block_b = set(merge_pcode_lines_sources(*block_side_b.lines))
+            diff_spans_in_raw_block = []
 
-        # Now from p-code diff spans, retrieve the decompiled ActionScript source lines.
-        diff_lines_in_as_source_a: set[int] = set()
-        diff_lines_in_as_source_b: set[int] = set()
+            # From normalized diff spans, retrieve the source (raw) p-code lines that are differing.
+            for norm_span_a, norm_span_b in block.diff_spans:
+                raw_span_a = _convert_span_from_normalized_pcode_to_raw(norm_span_a, block_side_a)
+                raw_span_b = _convert_span_from_normalized_pcode_to_raw(norm_span_b, block_side_b)
+                diff_spans_in_raw_block.append(RenderDiffSpanPair(a=raw_span_a, b=raw_span_b))
+
+            # Now from p-code diff spans, retrieve the decompiled ActionScript source lines.
+            for pcode_span_a, pcode_span_b in diff_spans_in_raw_block:
+                as_span_a = _convert_span_from_pcode_to_actionscript(pcode_span_a, block_a_pcode_to_as)
+                as_span_b = _convert_span_from_pcode_to_actionscript(pcode_span_b, block_b_pcode_to_as)
+                if as_span_a is not None and as_span_b is not None:
+                    diff_spans_in_as_source.append(RenderDiffSpanPair(a=as_span_a, b=as_span_b))
+
+        elif block.side_a_name is not None:
+            assert block_side_a is not None
+            raw_span_a = _convert_span_from_normalized_pcode_to_raw((0, len(block_side_a)), block_side_a)
+            as_span_a = _convert_span_from_pcode_to_actionscript(raw_span_a, block_a_pcode_to_as)
+            if as_span_a is not None:
+                diff_spans_in_as_source.append(RenderDiffSpanPair(a=as_span_a, b=None))
+
+        elif block.side_b_name is not None:
+            assert block_side_b is not None
+            raw_span_b = _convert_span_from_normalized_pcode_to_raw((0, len(block_side_b)), block_side_b)
+            as_span_b = _convert_span_from_pcode_to_actionscript(raw_span_b, block_b_pcode_to_as)
+            if as_span_b is not None:
+                diff_spans_in_as_source.append(RenderDiffSpanPair(a=None, b=as_span_b))
 
         script_a_actionscript_lines = _read_actionscript_source_lines(
             workspace_a.find_actionscript_file(script.side_a_path)
@@ -326,59 +451,45 @@ def prepare_diffset_actionscript_render(
             workspace_b.find_actionscript_file(script.side_b_path)
         )
 
-        for ln in diff_lines_in_raw_block_a:
-            as_src_line = block_a_pcode_to_as.get(ln)
-            if as_src_line is not None:
-                assert 0 <= as_src_line < len(script_a_actionscript_lines), (
-                    f"Mapped ActionScript line {as_src_line} is out of bounds! Side A script {script_a_name} has {len(script_a_actionscript_lines)} lines."
-                )
-                diff_lines_in_as_source_a.add(as_src_line)
-
-        for ln in diff_lines_in_raw_block_b:
-            as_src_line = block_b_pcode_to_as.get(ln)
-            if as_src_line is not None:
-                assert 0 <= as_src_line < len(script_b_actionscript_lines), (
-                    f"Mapped ActionScript line {as_src_line} is out of bounds! Side B script {script_b_name} has {len(script_b_actionscript_lines)} lines."
-                )
-                diff_lines_in_as_source_b.add(as_src_line)
-
         # Finally, extract the differing hunks of ActionScript that we need to display.
         # Sometimes we will not be able to resolve ActionScript code, then we will fall back to p-code.
         block_a_corpus_lines: list[str]
-        block_a_diff_lines: set[int]
         block_b_corpus_lines: list[str]
-        block_b_diff_lines: set[int]
+        diff_spans: list[RenderDiffSpanPair]
         block_lang: Literal["actionscript", "pcode"]
         side_a_resolved: bool
         side_b_resolved: bool
         prologue_messages: list[str] = []
 
-        if diff_lines_in_as_source_a or diff_lines_in_as_source_b:
+        if diff_spans_in_as_source:
             # If we could resolve AS code for one side at least.
             block_a_corpus_lines = script_a_actionscript_lines
-            block_a_diff_lines = diff_lines_in_as_source_a
             block_b_corpus_lines = script_b_actionscript_lines
-            block_b_diff_lines = diff_lines_in_as_source_b
+            diff_spans = diff_spans_in_as_source
             block_lang = "actionscript"
-            side_a_resolved = block.side_a_name is None or bool(diff_lines_in_as_source_a)
-            side_b_resolved = block.side_b_name is None or bool(diff_lines_in_as_source_b)
+            side_a_resolved = block.side_a_name is None or any(ds.a is not None for ds in diff_spans)
+            side_b_resolved = block.side_b_name is None or any(ds.b is not None for ds in diff_spans)
         else:
             # If we could not resolve ActionScript code at all, we fall back to p-code instead.
-            block_a_corpus_lines, block_a_diff_lines, block_b_corpus_lines, block_b_diff_lines = (
-                _pcode_block_render_data(block, block_side_a, block_side_b)
+            block_a_corpus_lines, block_b_corpus_lines, diff_spans = _pcode_block_render_data(
+                block, block_side_a, block_side_b
             )
 
             block_lang = "pcode"
-            side_a_resolved = block.side_a_name is None or bool(block_a_diff_lines)
-            side_b_resolved = block.side_b_name is None or bool(block_b_diff_lines)
+            side_a_resolved = block.side_a_name is None or bool(diff_spans)
+            side_b_resolved = block.side_b_name is None or bool(diff_spans)
 
             prologue_messages.append(
                 "[yellow]Unable to map pcode lines to ActionScript source for this block. Falling back to normalized p-code.[/yellow]"
             )
 
         hunk_pairs = align_hunk_pairs(
-            cut_text_hunks_with_context(block_a_corpus_lines, block_a_diff_lines, context_length=5, merge=True),
-            cut_text_hunks_with_context(block_b_corpus_lines, block_b_diff_lines, context_length=5, merge=True),
+            cut_text_hunks_with_context(
+                block_a_corpus_lines, [ds.a for ds in diff_spans if ds.a is not None], context_length=5, merge=True
+            ),
+            cut_text_hunks_with_context(
+                block_b_corpus_lines, [ds.b for ds in diff_spans if ds.b is not None], context_length=5, merge=True
+            ),
         )
 
         renderables.append(

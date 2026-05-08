@@ -360,36 +360,29 @@ class DiffHunk(list[TextHunk]):
 
 
 def cut_text_hunks_with_context(
-    text_lines: list[str], selection: list[int] | set[int], context_length=3, merge: bool = False
+    text_lines: list[str], spans: list[tuple[int, int]], context_length=3, merge: bool = False
 ) -> list[TextHunk]:
     """
-    Extract text hunks (groups of consecutive lines) around a subselection of line indices.
-    Capture up to `context_length` lines of context before and after the selected lines.
+    Extract text hunks (groups of consecutive lines) around a subselection of line spans.
+    Capture up to `context_length` lines of context before and after the selected spans.
     If `merge` is True, adjacent or overlapping hunks are merged.
     """
     hunks: list[TextHunk] = []
 
-    if not selection:
+    if not spans:
         return hunks
 
-    selection = sorted(selection)
+    if not text_lines:
+        return hunks
 
-    spans: list[slice] = []
-    current_sequence: list[int] = []
+    for span in sorted(spans):
+        span = slice(span[0], span[1])  # convert tuple to slice for readability
 
-    for selected_line in selection:
-        if not current_sequence or current_sequence[-1] == (selected_line - 1):
-            current_sequence.append(selected_line)
-            continue
-
-        spans.append(slice(current_sequence[0], current_sequence[-1] + 1))
-        current_sequence = [selected_line]
-
-    spans.append(slice(current_sequence[0], current_sequence[-1] + 1))
-
-    for span in spans:
         if span.start < 0 or span.stop > len(text_lines):
             raise ValueError(f"Line selection contains an out-of-bounds span: [{span.start}:{span.stop}].")
+
+        if span.start > span.stop:
+            raise ValueError(f"Provided line span is invalid: [{span.start}:{span.stop}].")
 
         hunk: TextHunk = TextHunk()
 
@@ -448,7 +441,12 @@ def align_hunk_pair_edge_context(hunk_1: TextHunk, hunk_2: TextHunk) -> tuple[Te
     """
     Trim leading and trailing context lines so their edge context matches.
     """
-    if len(hunk_1) == 0 or len(hunk_2) == 0:
+    if (
+        len(hunk_1) == 0
+        or len(hunk_2) == 0
+        or all(ln.is_context for ln in hunk_1)
+        or all(ln.is_context for ln in hunk_2)
+    ):
         return hunk_1, hunk_2
 
     def _get_context_region(hnk: TextHunk, edge: Literal["leading", "trailing"]) -> TextHunk:
@@ -462,10 +460,6 @@ def align_hunk_pair_edge_context(hunk_1: TextHunk, hunk_2: TextHunk) -> tuple[Te
     # Get the start indexes of the common leading context.
     leading_context_1: TextHunk = _get_context_region(hunk_1, "leading")
     leading_context_2: TextHunk = _get_context_region(hunk_2, "leading")
-
-    assert len(leading_context_1) < len(hunk_1) and len(leading_context_2) < len(hunk_2), (
-        "Hunks must contain at least one non-context line!"
-    )
 
     a_first_index = hunk_1[0].index
     b_first_index = hunk_2[0].index
