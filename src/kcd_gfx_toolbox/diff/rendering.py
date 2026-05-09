@@ -359,6 +359,11 @@ def _resolve_actionscript_block_spans(
     Translate a block's diff spans from normalized p-code coordinates into ActionScript line spans.
 
     Spans that cannot be resolved properly against the source map are dropped.
+    Resulting span pairs are sorted in ascending order like so:
+      1. by start line on side A
+      2. then by start line on side B
+      3. then by end line on side A
+      4. then by end line on side B
     """
     as_diff_spans: list[RenderDiffSpanPair] = []
 
@@ -408,7 +413,11 @@ def _resolve_actionscript_block_spans(
             _assert_valid_span(as_span_b, "b", raw_span_b)
             as_diff_spans.append(RenderDiffSpanPair(a=None, b=as_span_b))
 
-    return as_diff_spans
+    if not block.is_paired():
+        # Unmatched blocks only produce one pair by construction, so there is no need to sort.
+        return as_diff_spans
+
+    return sorted(as_diff_spans, key=lambda p: (p.a[0], p.b[0], p.a[1], p.b[1]))  # pyright: ignore[reportOptionalSubscript]
 
 
 def prepare_diffset_actionscript_render(
