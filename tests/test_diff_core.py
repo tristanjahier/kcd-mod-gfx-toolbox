@@ -1116,14 +1116,14 @@ def test_cut_text_hunks_with_context_with_outofbounds_span():
         Push register2, "GetMoney"
     """)
 
-    with pytest.raises(ValueError, match=re.escape("Line selection contains an out-of-bounds span: [-1:3].")):
+    with pytest.raises(ValueError, match=re.escape("Line selection contains an out-of-bounds span: [-1:3[.")):
         cut_text_hunks_with_context(sample, _lines_to_spans([-1, 0, 1, 2]))
 
-    with pytest.raises(ValueError, match=re.escape("Line selection contains an out-of-bounds span: [1:6].")):
+    with pytest.raises(ValueError, match=re.escape("Line selection contains an out-of-bounds span: [1:6[.")):
         cut_text_hunks_with_context(sample, _lines_to_spans([1, 2, 3, 4, 5]))
 
 
-def test_cut_text_hunks_with_context_with_invalid_span():
+def test_cut_text_hunks_with_context_with_malformed_span():
     sample = sample_text_lines("""
         Push register1, "m_DisplayedData", 0.0, "Array"
         NewObject
@@ -1132,7 +1132,7 @@ def test_cut_text_hunks_with_context_with_invalid_span():
         Push register2, "GetMoney"
     """)
 
-    with pytest.raises(ValueError, match=re.escape("Provided line span is invalid: [3:1].")):
+    with pytest.raises(ValueError, match=re.escape("Provided line span is malformed: [3:1[.")):
         cut_text_hunks_with_context(sample, [(3, 1)])
 
 
