@@ -451,6 +451,22 @@ def prepare_diffset_actionscript_render(
             workspace_b.find_actionscript_file(script.side_b_path)
         )
 
+        # Assert that produced spans are valid and not out of range.
+        def _assert_valid_span(_span: tuple[int, int], _side: Literal["a", "b"]):
+            _len = len(script_a_actionscript_lines if _side == "a" else script_b_actionscript_lines)
+            _corpus = script_a_name if _side == "a" else script_b_name
+            _blk = block.side_a_name if _side == "a" else block.side_b_name
+            assert 0 <= _span[0] <= _span[1] <= _len, (
+                f"ActionScript line span [{_span[0]}, {_span[1]}[ is malformed or out of range. The script has {_len} lines. "
+                f"(side: {_side.upper()}, script: '{_corpus}', block: '{_blk}')"
+            )
+
+        for diff_span in diff_spans_in_as_source:
+            if diff_span.a is not None:
+                _assert_valid_span(diff_span.a, "a")
+            if diff_span.b is not None:
+                _assert_valid_span(diff_span.b, "b")
+
         # Finally, extract the differing hunks of ActionScript that we need to display.
         # Sometimes we will not be able to resolve ActionScript code, then we will fall back to p-code.
         block_a_corpus_lines: list[str]

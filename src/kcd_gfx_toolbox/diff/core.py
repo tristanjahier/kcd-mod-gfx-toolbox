@@ -381,10 +381,10 @@ def cut_text_hunks_with_context(
         span = slice(span[0], span[1])  # convert tuple to slice for readability
 
         if span.start < 0 or span.stop > len(text_lines):
-            raise ValueError(f"Line selection contains an out-of-bounds span: [{span.start}:{span.stop}].")
+            raise ValueError(f"Line selection contains an out-of-bounds span: [{span.start}:{span.stop}[.")
 
         if span.start > span.stop:
-            raise ValueError(f"Provided line span is invalid: [{span.start}:{span.stop}].")
+            raise ValueError(f"Provided line span is malformed: [{span.start}:{span.stop}[.")
 
         hunk: TextHunk = TextHunk()
 
