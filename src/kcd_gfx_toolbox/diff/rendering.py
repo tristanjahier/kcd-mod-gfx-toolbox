@@ -337,6 +337,72 @@ def _convert_span_from_pcode_to_actionscript(
     return None
 
 
+def _resolve_actionscript_block_spans(
+    script: GfxScript,
+    block: GfxScriptBlock,
+    block_side_a: PcodeBlock | None,
+    block_side_b: PcodeBlock | None,
+    source_map_a: dict[int, int | None],
+    source_map_b: dict[int, int | None],
+    script_a_actionscript_line_count: int,
+    script_b_actionscript_line_count: int,
+) -> list[RenderDiffSpanPair]:
+    """
+    Translate a block's diff spans from normalized p-code coordinates into ActionScript line spans.
+
+    Spans that cannot be resolved properly against the source map are dropped.
+    """
+    as_diff_spans: list[RenderDiffSpanPair] = []
+
+    def _assert_valid_span(_span: tuple[int, int], _side: Literal["a", "b"], _orig_span: tuple[int, int]):
+        _len = script_a_actionscript_line_count if _side == "a" else script_b_actionscript_line_count
+        _script = (script.side_a_path if _side == "a" else script.side_b_path).as_posix()
+        _blk = block.side_a_name if _side == "a" else block.side_b_name
+        assert 0 <= _span[0] <= _span[1] <= _len, (
+            f"ActionScript line span [{_span[0]}, {_span[1]}[ is malformed or out of range. The script has {_len} lines. "
+            f"(origin span: [{_orig_span[0]}, {_orig_span[1]}[, side: {_side.upper()}, script: '{_script}', block: '{_blk}')"
+        )
+
+    if block.is_paired():
+        assert block_side_a is not None
+        assert block_side_b is not None
+
+        diff_spans_in_raw_block = []
+
+        # From normalized diff spans, retrieve the source (raw) p-code lines that are differing.
+        for norm_span_a, norm_span_b in block.diff_spans:
+            raw_span_a = _convert_span_from_normalized_pcode_to_raw(norm_span_a, block_side_a)
+            raw_span_b = _convert_span_from_normalized_pcode_to_raw(norm_span_b, block_side_b)
+            diff_spans_in_raw_block.append(RenderDiffSpanPair(a=raw_span_a, b=raw_span_b))
+
+        # Now from p-code diff spans, retrieve the decompiled ActionScript source lines.
+        for pcode_span_a, pcode_span_b in diff_spans_in_raw_block:
+            as_span_a = _convert_span_from_pcode_to_actionscript(pcode_span_a, source_map_a)
+            as_span_b = _convert_span_from_pcode_to_actionscript(pcode_span_b, source_map_b)
+            if as_span_a is not None and as_span_b is not None:
+                _assert_valid_span(as_span_a, "a", pcode_span_a)
+                _assert_valid_span(as_span_b, "b", pcode_span_b)
+                as_diff_spans.append(RenderDiffSpanPair(a=as_span_a, b=as_span_b))
+
+    elif block.side_a_name is not None:
+        assert block_side_a is not None
+        raw_span_a = _convert_span_from_normalized_pcode_to_raw((0, len(block_side_a)), block_side_a)
+        as_span_a = _convert_span_from_pcode_to_actionscript(raw_span_a, source_map_a)
+        if as_span_a is not None:
+            _assert_valid_span(as_span_a, "a", raw_span_a)
+            as_diff_spans.append(RenderDiffSpanPair(a=as_span_a, b=None))
+
+    elif block.side_b_name is not None:
+        assert block_side_b is not None
+        raw_span_b = _convert_span_from_normalized_pcode_to_raw((0, len(block_side_b)), block_side_b)
+        as_span_b = _convert_span_from_pcode_to_actionscript(raw_span_b, source_map_b)
+        if as_span_b is not None:
+            _assert_valid_span(as_span_b, "b", raw_span_b)
+            as_diff_spans.append(RenderDiffSpanPair(a=None, b=as_span_b))
+
+    return as_diff_spans
+
+
 def prepare_diffset_actionscript_render(
     diffset: GfxDiffSet,
     workspace_a: Workspace,
@@ -400,48 +466,14 @@ def prepare_diffset_actionscript_render(
         if script_b_name not in file_b_pcode_to_as_line_map:
             raise RuntimeError(f"Script {script_b_name!r} not found in SWD file.")
 
-        diff_spans_in_as_source: list[RenderDiffSpanPair] = []
-
         # Prepare source line mapping from raw p-code to ActionScript.
-        block_a_pcode_to_as: dict[int, int | None] = _build_block_source_map(
+        block_a_pcode_to_as_map: dict[int, int | None] = _build_block_source_map(
             block_side_a, file_a_pcode_to_as_line_map[script_a_name]
         )
-        block_b_pcode_to_as: dict[int, int | None] = _build_block_source_map(
+
+        block_b_pcode_to_as_map: dict[int, int | None] = _build_block_source_map(
             block_side_b, file_b_pcode_to_as_line_map[script_b_name]
         )
-
-        if block.is_paired():
-            assert block_side_a is not None
-            assert block_side_b is not None
-
-            diff_spans_in_raw_block = []
-
-            # From normalized diff spans, retrieve the source (raw) p-code lines that are differing.
-            for norm_span_a, norm_span_b in block.diff_spans:
-                raw_span_a = _convert_span_from_normalized_pcode_to_raw(norm_span_a, block_side_a)
-                raw_span_b = _convert_span_from_normalized_pcode_to_raw(norm_span_b, block_side_b)
-                diff_spans_in_raw_block.append(RenderDiffSpanPair(a=raw_span_a, b=raw_span_b))
-
-            # Now from p-code diff spans, retrieve the decompiled ActionScript source lines.
-            for pcode_span_a, pcode_span_b in diff_spans_in_raw_block:
-                as_span_a = _convert_span_from_pcode_to_actionscript(pcode_span_a, block_a_pcode_to_as)
-                as_span_b = _convert_span_from_pcode_to_actionscript(pcode_span_b, block_b_pcode_to_as)
-                if as_span_a is not None and as_span_b is not None:
-                    diff_spans_in_as_source.append(RenderDiffSpanPair(a=as_span_a, b=as_span_b))
-
-        elif block.side_a_name is not None:
-            assert block_side_a is not None
-            raw_span_a = _convert_span_from_normalized_pcode_to_raw((0, len(block_side_a)), block_side_a)
-            as_span_a = _convert_span_from_pcode_to_actionscript(raw_span_a, block_a_pcode_to_as)
-            if as_span_a is not None:
-                diff_spans_in_as_source.append(RenderDiffSpanPair(a=as_span_a, b=None))
-
-        elif block.side_b_name is not None:
-            assert block_side_b is not None
-            raw_span_b = _convert_span_from_normalized_pcode_to_raw((0, len(block_side_b)), block_side_b)
-            as_span_b = _convert_span_from_pcode_to_actionscript(raw_span_b, block_b_pcode_to_as)
-            if as_span_b is not None:
-                diff_spans_in_as_source.append(RenderDiffSpanPair(a=None, b=as_span_b))
 
         script_a_actionscript_lines = _read_actionscript_source_lines(
             workspace_a.find_actionscript_file(script.side_a_path)
@@ -451,21 +483,17 @@ def prepare_diffset_actionscript_render(
             workspace_b.find_actionscript_file(script.side_b_path)
         )
 
-        # Assert that produced spans are valid and not out of range.
-        def _assert_valid_span(_span: tuple[int, int], _side: Literal["a", "b"]):
-            _len = len(script_a_actionscript_lines if _side == "a" else script_b_actionscript_lines)
-            _corpus = script_a_name if _side == "a" else script_b_name
-            _blk = block.side_a_name if _side == "a" else block.side_b_name
-            assert 0 <= _span[0] <= _span[1] <= _len, (
-                f"ActionScript line span [{_span[0]}, {_span[1]}[ is malformed or out of range. The script has {_len} lines. "
-                f"(side: {_side.upper()}, script: '{_corpus}', block: '{_blk}')"
-            )
-
-        for diff_span in diff_spans_in_as_source:
-            if diff_span.a is not None:
-                _assert_valid_span(diff_span.a, "a")
-            if diff_span.b is not None:
-                _assert_valid_span(diff_span.b, "b")
+        # Resolve ActionScript diff spans from normalized p-code spans.
+        diff_spans_in_as_source = _resolve_actionscript_block_spans(
+            script,
+            block,
+            block_side_a,
+            block_side_b,
+            block_a_pcode_to_as_map,
+            block_b_pcode_to_as_map,
+            len(script_a_actionscript_lines),
+            len(script_b_actionscript_lines),
+        )
 
         # Finally, extract the differing hunks of ActionScript that we need to display.
         # Sometimes we will not be able to resolve ActionScript code, then we will fall back to p-code.
