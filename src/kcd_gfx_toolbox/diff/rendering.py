@@ -332,6 +332,14 @@ def _convert_span_from_pcode_to_actionscript(
         end_inclusive = _backward_lookup(span[1] - 2)
 
     if start is not None and end_inclusive is not None:
+        if start > end_inclusive:
+            # Inverted span: some p-code line in the range points further forward in ActionScript than
+            # its immediate neighbors. Typically it is a loop condition p-code line or a function
+            # definition header mapping to its closing brace.
+            # Simple fix: fall back to the union of all mapped AS lines within the span.
+            mapped = [v for k, v in source_map.items() if span[0] <= k < span[1] and v is not None]
+            return (min(mapped), max(mapped) + 1) if mapped else None
+
         return (start, end_inclusive + 1)
 
     return None

@@ -603,6 +603,56 @@ def test_convert_span_from_pcode_to_actionscript_span_end_past_last_mapped_line(
     # => lookup inwards, find {142: 64} => +1.
 
 
+def test_convert_span_from_pcode_to_actionscript_span_with_jump():
+    # Realistic sparse mapping for a small function block. {290: 84} is the function-definition
+    # header in p-code, pointing to the function's closing brace in ActionScript.
+    srcmap: dict[int, int | None] = {
+        287: None,
+        289: None,
+        290: 84,
+        291: 79,
+        292: None,
+        293: None,
+        294: None,
+        295: 81,
+        296: None,
+        297: None,
+        298: 82,
+        299: None,
+        300: None,
+    }
+
+    # The function should detect the boundary inversion before returning and
+    # fall back to the union of all mapped AS lines within the span instead.
+    as_span = _convert_span_from_pcode_to_actionscript((287, 301), srcmap)
+    assert as_span == (79, 85)
+
+
+def test_convert_span_from_pcode_to_actionscript_span_entirely_on_jump():
+    # Same context as above.
+    srcmap: dict[int, int | None] = {
+        287: None,
+        289: None,
+        290: 84,
+        291: 79,
+        292: None,
+        293: None,
+        294: None,
+        295: 81,
+        296: None,
+        297: None,
+        298: 82,
+        299: None,
+        300: None,
+    }
+
+    # When the requested span sits entirely on p-code lines that jump forward in AS (e.g. a
+    # diff confined to loop condition p-code lines), there is no boundary inversion, and the
+    # span must be considered correct as-is.
+    as_span = _convert_span_from_pcode_to_actionscript((290, 291), srcmap)
+    assert as_span == (84, 85)
+
+
 def test_convert_span_from_pcode_to_actionscript_empty_source_maps():
     assert _convert_span_from_pcode_to_actionscript((0, 1), {}) is None
 
