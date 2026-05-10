@@ -2,8 +2,10 @@ from dataclasses import dataclass
 import pytest
 from kcd_gfx_toolbox.avm1.pcode_parsing import PcodeBlock, PcodeLine
 from kcd_gfx_toolbox.diff.rendering import (
+    RenderDiffSpanPair,
     _convert_span_from_normalized_pcode_to_raw,
     _convert_span_from_pcode_to_actionscript,
+    _merge_overlapping_span_pairs,
 )
 
 
@@ -657,3 +659,50 @@ def test_convert_span_from_pcode_to_actionscript_empty_source_maps():
     assert _convert_span_from_pcode_to_actionscript((0, 1), {}) is None
 
     assert _convert_span_from_pcode_to_actionscript((0, 1), {825: None, 826: None, 830: None}) is None
+
+
+def test_merge_overlapping_span_pairs():
+    spans = _merge_overlapping_span_pairs(
+        [
+            RenderDiffSpanPair(a=(8088, 8091), b=(8106, 8109)),
+            RenderDiffSpanPair(a=(8092, 8096), b=(8110, 8114)),
+            RenderDiffSpanPair(a=(8094, 8102), b=(8112, 8120)),
+        ]
+    )
+
+    assert spans == [
+        RenderDiffSpanPair(a=(8088, 8091), b=(8106, 8109)),
+        RenderDiffSpanPair(a=(8092, 8102), b=(8110, 8120)),
+    ]
+
+
+def test_merge_overlapping_span_pairs_does_not_merge_if_not_both_sides_are_adjacent():
+    spans = _merge_overlapping_span_pairs(
+        [RenderDiffSpanPair(a=(128, 140), b=(130, 138)), RenderDiffSpanPair(a=(140, 150), b=(140, 151))]
+    )
+
+    assert spans == [RenderDiffSpanPair(a=(128, 140), b=(130, 138)), RenderDiffSpanPair(a=(140, 150), b=(140, 151))]
+
+
+def test_merge_overlapping_span_pairs_merges_transitively():
+    spans = _merge_overlapping_span_pairs(
+        [
+            RenderDiffSpanPair(a=(1312, 1337), b=(1310, 1337)),
+            RenderDiffSpanPair(a=(1337, 1341), b=(1336, 1340)),
+            RenderDiffSpanPair(a=(1340, 1402), b=(1340, 1406)),
+        ]
+    )
+
+    assert spans == [
+        RenderDiffSpanPair(a=(1312, 1402), b=(1310, 1406)),
+    ]
+
+
+def test_merge_overlapping_span_pairs_does_nothing_with_empty_list():
+    assert _merge_overlapping_span_pairs([]) == []
+
+
+def test_merge_overlapping_span_pairs_does_nothing_with_one_pair():
+    spans = _merge_overlapping_span_pairs([RenderDiffSpanPair(a=(2281, 2298), b=(2003, 2023))])
+
+    assert spans == [RenderDiffSpanPair(a=(2281, 2298), b=(2003, 2023))]

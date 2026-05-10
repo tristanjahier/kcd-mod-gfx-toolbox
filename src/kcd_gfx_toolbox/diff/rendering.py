@@ -345,6 +345,46 @@ def _convert_span_from_pcode_to_actionscript(
     return None
 
 
+def _merge_overlapping_span_pairs(diff_span_pairs: list[RenderDiffSpanPair]) -> list[RenderDiffSpanPair]:
+    """
+    Merge line span pairs when they are adjacent or overlapping on both sides.
+
+    Require pairs to be sorted in ascending order to work properly.
+    """
+    if len(diff_span_pairs) < 2:
+        return diff_span_pairs
+
+    merged_pairs: list[RenderDiffSpanPair] = []
+    last_pair: RenderDiffSpanPair | None = None
+
+    for pair in diff_span_pairs:
+        if last_pair is None:
+            last_pair = pair
+            continue
+
+        assert pair.a is not None and pair.b is not None
+        assert last_pair.a is not None and last_pair.b is not None
+
+        if (
+            last_pair.a[1] >= pair.a[0]
+            and pair.a[1] >= last_pair.a[0]
+            and last_pair.b[1] >= pair.b[0]
+            and pair.b[1] >= last_pair.b[0]
+        ):
+            last_pair = RenderDiffSpanPair(
+                a=(min(last_pair.a[0], pair.a[0]), max(last_pair.a[1], pair.a[1])),
+                b=(min(last_pair.b[0], pair.b[0]), max(last_pair.b[1], pair.b[1])),
+            )
+        else:
+            merged_pairs.append(last_pair)
+            last_pair = pair
+
+    assert last_pair is not None
+    merged_pairs.append(last_pair)
+
+    return merged_pairs
+
+
 def _resolve_actionscript_block_spans(
     script: GfxScript,
     block: GfxScriptBlock,
@@ -364,6 +404,7 @@ def _resolve_actionscript_block_spans(
       2. then by start line on side B
       3. then by end line on side A
       4. then by end line on side B
+    Resulting spans are also merged and deduplicated.
     """
     as_diff_spans: list[RenderDiffSpanPair] = []
 
@@ -417,7 +458,9 @@ def _resolve_actionscript_block_spans(
         # Unmatched blocks only produce one pair by construction, so there is no need to sort.
         return as_diff_spans
 
-    return sorted(as_diff_spans, key=lambda p: (p.a[0], p.b[0], p.a[1], p.b[1]))  # pyright: ignore[reportOptionalSubscript]
+    as_diff_spans.sort(key=lambda p: (p.a[0], p.b[0], p.a[1], p.b[1]))  # pyright: ignore[reportOptionalSubscript]
+
+    return _merge_overlapping_span_pairs(as_diff_spans)
 
 
 def prepare_diffset_actionscript_render(
