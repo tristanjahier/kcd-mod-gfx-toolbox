@@ -407,8 +407,9 @@ def print_block_diff_in_split_layout(block_diff: RenderableBlockDiff, debug_mode
         print_debug("This block has more than one hunk.")
 
     for hunk_a, hunk_b in block_diff.hunk_pairs:
-        if debug_mode and block.is_paired() and block_diff.lang == "actionscript" and hunks_are_equal(hunk_a, hunk_b):
-            print_debug("Different p-code but same decompiled ActionScript.")
+        if debug_mode and block.is_paired() and block_diff.lang == "actionscript":
+            if hunk_a is not None and hunk_b is not None and hunks_are_equal(hunk_a, hunk_b):
+                print_debug("Different p-code but same decompiled ActionScript.")
 
         diff_view = build_split_layout_for_hunk_pair(hunk_a, hunk_b, block_diff=block_diff)
 

@@ -24,8 +24,7 @@ from kcd_gfx_toolbox.workspace import Workspace
 from .core import (
     DiffAnnotatedHunk,
     TextHunk,
-    align_hunk_pairs,
-    cut_text_hunks_with_context,
+    cut_text_hunk_with_context,
     diff_text_hunks,
     diff_texts,
 )
@@ -123,7 +122,7 @@ def get_sorted_and_filtered_script_block_pairs(
 class RenderableBlockDiff:
     script: GfxScript
     block: GfxScriptBlock
-    hunk_pairs: list[tuple[TextHunk, TextHunk]]
+    hunk_pairs: list[tuple[TextHunk | None, TextHunk | None]]
     prologue_messages: list[str] = field(default_factory=list)
     lang: Literal["actionscript", "pcode"]
     # The two following fields only make sense when targeting ActionScript.
@@ -170,6 +169,54 @@ def _pcode_block_render_data(
     return block_a_lines, block_b_lines, diff_spans
 
 
+def _merge_overlapping_hunk_pairs(
+    hunk_pairs: list[tuple[TextHunk | None, TextHunk | None]],
+) -> list[tuple[TextHunk | None, TextHunk | None]]:
+    """
+    Merge text hunk pairs when they are adjacent or overlapping on both sides.
+
+    Require pairs to be sorted in ascending line order to work properly.
+    """
+    if len(hunk_pairs) < 2:
+        return hunk_pairs
+
+    merged_pairs: list[tuple[TextHunk | None, TextHunk | None]] = []
+    last_pair: tuple[TextHunk, TextHunk] | None = None
+
+    for pair in hunk_pairs:
+        hunk_a, hunk_b = pair
+
+        if not hunk_a or not hunk_b:
+            # Unpaired and empty hunks cannot be merged with anything: pass through as-is.
+            if last_pair is not None:
+                merged_pairs.append(last_pair)
+                last_pair = None
+            merged_pairs.append(pair)
+            continue
+
+        if last_pair is None:
+            last_pair = (hunk_a, hunk_b)
+            continue
+
+        last_hunk_a, last_hunk_b = last_pair
+
+        if (
+            last_hunk_a[-1].index + 1 >= hunk_a[0].index
+            and hunk_a[-1].index + 1 >= last_hunk_a[0].index
+            and last_hunk_b[-1].index + 1 >= hunk_b[0].index
+            and hunk_b[-1].index + 1 >= last_hunk_b[0].index
+        ):
+            last_pair = (last_hunk_a.merged(hunk_a), last_hunk_b.merged(hunk_b))
+        else:
+            merged_pairs.append(last_pair)
+            last_pair = (hunk_a, hunk_b)
+
+    if last_pair is not None:
+        merged_pairs.append(last_pair)
+
+    return merged_pairs
+
+
 def prepare_diffset_pcode_render(
     diffset: GfxDiffSet,
     normalized_script_blocks_a: dict[Path, list[PcodeBlock]],
@@ -199,14 +246,22 @@ def prepare_diffset_pcode_render(
 
         block_a_lines, block_b_lines, diff_spans = _pcode_block_render_data(block, block_side_a, block_side_b)
 
-        hunk_pairs = align_hunk_pairs(
-            cut_text_hunks_with_context(
-                block_a_lines, [ds.a for ds in diff_spans if ds.a is not None], context_length=5, merge=True
-            ),
-            cut_text_hunks_with_context(
-                block_b_lines, [ds.b for ds in diff_spans if ds.b is not None], context_length=5, merge=True
-            ),
-        )
+        hunk_pairs: list[tuple[TextHunk | None, TextHunk | None]] = []
+
+        for span_a, span_b in diff_spans:
+            if span_a is not None:
+                ha = cut_text_hunk_with_context(block_a_lines, span_a, context_length=5)
+            else:
+                ha = None
+
+            if span_b is not None:
+                hb = cut_text_hunk_with_context(block_b_lines, span_b, context_length=5)
+            else:
+                hb = None
+
+            hunk_pairs.append((ha, hb))
+
+        hunk_pairs = _merge_overlapping_hunk_pairs(hunk_pairs)
 
         renderables.append(
             RenderableBlockDiff(
@@ -587,14 +642,22 @@ def prepare_diffset_actionscript_render(
                 "[yellow]Unable to map pcode lines to ActionScript source for this block. Falling back to normalized p-code.[/yellow]"
             )
 
-        hunk_pairs = align_hunk_pairs(
-            cut_text_hunks_with_context(
-                block_a_corpus_lines, [ds.a for ds in diff_spans if ds.a is not None], context_length=5, merge=True
-            ),
-            cut_text_hunks_with_context(
-                block_b_corpus_lines, [ds.b for ds in diff_spans if ds.b is not None], context_length=5, merge=True
-            ),
-        )
+        hunk_pairs: list[tuple[TextHunk | None, TextHunk | None]] = []
+
+        for span_a, span_b in diff_spans:
+            if span_a is not None:
+                ha = cut_text_hunk_with_context(block_a_corpus_lines, span_a, context_length=5)
+            else:
+                ha = None
+
+            if span_b is not None:
+                hb = cut_text_hunk_with_context(block_b_corpus_lines, span_b, context_length=5)
+            else:
+                hb = None
+
+            hunk_pairs.append((ha, hb))
+
+        hunk_pairs = _merge_overlapping_hunk_pairs(hunk_pairs)
 
         renderables.append(
             RenderableBlockDiff(
@@ -612,7 +675,7 @@ def prepare_diffset_actionscript_render(
 
 
 def build_split_layout_for_hunk_pair(
-    hunk_a: TextHunk, hunk_b: TextHunk, block_diff: RenderableBlockDiff
+    hunk_a: TextHunk | None, hunk_b: TextHunk | None, block_diff: RenderableBlockDiff
 ) -> SplitLayout:
     """
     Take a pair of hunks, annotate their differences, and build a SplitLayout Rich renderable component.
@@ -621,6 +684,8 @@ def build_split_layout_for_hunk_pair(
     side_b: DiffAnnotatedHunk | SplitLayoutMessagePane
 
     if block_diff.block.is_paired():
+        assert hunk_a is not None and hunk_b is not None
+
         if block_diff.side_a_resolved and block_diff.side_b_resolved:
             side_a, side_b = diff_text_hunks(hunk_a, hunk_b)
         elif not block_diff.side_a_resolved:
@@ -637,11 +702,15 @@ def build_split_layout_for_hunk_pair(
             side_b = SplitLayoutMessagePane(
                 "[yellow]Unable to map pcode lines to ActionScript source on this side.[/yellow]"
             )
+        else:
+            assert False, "unreachable"
     else:
         if block_diff.block.side_a_name is None:
+            assert hunk_b is not None
             side_a = SplitLayoutMessagePane("[dim]This block does not exist on side A.[/dim]")
             _, side_b = diff_text_hunks(TextHunk(), hunk_b)
         else:
+            assert hunk_a is not None
             side_a, _ = diff_text_hunks(hunk_a, TextHunk())
             side_b = SplitLayoutMessagePane("[dim]This block does not exist on side B.[/dim]")
 
@@ -669,8 +738,15 @@ def build_unified_layout_for_block_diff(block_diff: RenderableBlockDiff) -> Unif
         else:
             return None
 
+    diff_hunk_pairs: list[tuple[DiffAnnotatedHunk, DiffAnnotatedHunk]] = []
+
+    for hunk_a, hunk_b in block_diff.hunk_pairs:
+        hunk_a = hunk_a if hunk_a is not None else TextHunk()
+        hunk_b = hunk_b if hunk_b is not None else TextHunk()
+        diff_hunk_pairs.append(diff_text_hunks(hunk_a, hunk_b))
+
     return UnifiedLayout(
         _side_path(script.side_a_path, block.side_a_name),
         _side_path(script.side_b_path, block.side_b_name),
-        [diff_text_hunks(hunk_a, hunk_b) for hunk_a, hunk_b in block_diff.hunk_pairs],
+        diff_hunk_pairs,
     )

@@ -11,7 +11,7 @@ from kcd_gfx_toolbox.diff.core import (
     _pair_hunks_by_similarity_dp,
     align_hunk_pair_edge_context,
     align_hunk_pairs,
-    cut_text_hunks_with_context,
+    cut_text_hunk_with_context,
     diff_file_trees,
     diff_file_trees_basic,
     diff_text_hunks,
@@ -64,23 +64,6 @@ def _hunk_ctx(index: int, text: str) -> TextHunkLine:
 def _sample_text_hunk(text: str) -> TextHunk:
     """Create a text hunk from lines."""
     return TextHunk(_hunk_select(i, line) for i, line in enumerate(sample_text_lines(text), start=0))
-
-
-def _lines_to_spans(selection: list[int] | set[int]) -> list[tuple[int, int]]:
-    """Convert a list of line indices to spans."""
-    spans: list[tuple[int, int]] = []
-    current_sequence: list[int] = []
-
-    for selected_line in selection:
-        if not current_sequence or current_sequence[-1] == (selected_line - 1):
-            current_sequence.append(selected_line)
-            continue
-
-        spans.append((current_sequence[0], current_sequence[-1] + 1))
-        current_sequence = [selected_line]
-
-    spans.append((current_sequence[0], current_sequence[-1] + 1))
-    return spans
 
 
 def test_diff_file_trees_basic_with_no_differences(tmp_path: Path):
@@ -1032,7 +1015,7 @@ def test_format_path_rename_git_style_edge_cases():
     assert format_path_rename_git_style(Path("unchanged/path.txt"), None) == "unchanged/path.txt"
 
 
-def test_cut_text_hunks_with_context():
+def test_cut_text_hunk_with_context():
     sample = sample_text_lines("""
         Push register1, "m_DisplayedData", 0.0, "Array"
         NewObject
@@ -1062,7 +1045,7 @@ def test_cut_text_hunks_with_context():
         Subtract
     """)
 
-    hunks = cut_text_hunks_with_context(sample, _lines_to_spans([1, 6, 7, 8, 19, 20]), context_length=3, merge=False)
+    hunks = [cut_text_hunk_with_context(sample, sp, context_length=3) for sp in [(1, 2), (6, 9), (19, 21)]]
 
     assert hunks == [
         TextHunk(
@@ -1107,7 +1090,7 @@ def test_cut_text_hunks_with_context():
     ]
 
 
-def test_cut_text_hunks_with_context_with_outofbounds_span():
+def test_cut_text_hunk_with_context_with_outofbounds_span():
     sample = sample_text_lines("""
         Push register1, "m_DisplayedData", 0.0, "Array"
         NewObject
@@ -1117,13 +1100,13 @@ def test_cut_text_hunks_with_context_with_outofbounds_span():
     """)
 
     with pytest.raises(ValueError, match=re.escape("Line selection contains an out-of-bounds span: [-1:3[.")):
-        cut_text_hunks_with_context(sample, _lines_to_spans([-1, 0, 1, 2]))
+        cut_text_hunk_with_context(sample, (-1, 3))
 
     with pytest.raises(ValueError, match=re.escape("Line selection contains an out-of-bounds span: [1:6[.")):
-        cut_text_hunks_with_context(sample, _lines_to_spans([1, 2, 3, 4, 5]))
+        cut_text_hunk_with_context(sample, (1, 6))
 
 
-def test_cut_text_hunks_with_context_with_malformed_span():
+def test_cut_text_hunk_with_context_with_malformed_span():
     sample = sample_text_lines("""
         Push register1, "m_DisplayedData", 0.0, "Array"
         NewObject
@@ -1133,10 +1116,10 @@ def test_cut_text_hunks_with_context_with_malformed_span():
     """)
 
     with pytest.raises(ValueError, match=re.escape("Provided line span is malformed: [3:1[.")):
-        cut_text_hunks_with_context(sample, [(3, 1)])
+        cut_text_hunk_with_context(sample, (3, 1))
 
 
-def test_cut_text_hunks_with_context_with_smaller_context():
+def test_cut_text_hunk_with_context_with_smaller_context():
     sample = sample_text_lines("""
         Push register1, "m_DisplayedData", 0.0, "Array"
         NewObject
@@ -1166,7 +1149,7 @@ def test_cut_text_hunks_with_context_with_smaller_context():
         Subtract
     """)
 
-    hunks = cut_text_hunks_with_context(sample, _lines_to_spans([1, 6, 7, 8, 19, 20]), context_length=1, merge=False)
+    hunks = [cut_text_hunk_with_context(sample, sp, context_length=1) for sp in [(1, 2), (6, 9), (19, 21)]]
 
     assert hunks == [
         TextHunk(
@@ -1201,151 +1184,7 @@ def test_cut_text_hunks_with_context_with_smaller_context():
     ]
 
 
-def test_cut_text_hunks_with_context_with_unordered_set_selection():
-    sample = sample_text_lines("""
-        Push register1, "m_DisplayedData", 0.0, "Array"
-        NewObject
-        SetMember
-        }
-        SetMember
-        Push register2, "GetMoneyForString"
-        DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {
-        loc4vs5: Push 0.1, 0.0, register1, "GetMoney"
-        CallMethod
-        Push 1, "Math"
-        GetVariable
-        Push "round"
-        CallMethod
-        Multiply
-        Return
-        }
-
-        SetMember
-        Push register2, "GetMoney"
-        loc1312: DefineFunction2 "", 0, 5, false, false, true, false, true, false, false, true, false {
-        Push 0.0
-        loc78f:
-        Push -1
-        Add2
-        Push -1.3
-        Subtract
-    """)
-
-    hunks = cut_text_hunks_with_context(sample, _lines_to_spans([2, 13, 6, 0]), context_length=2, merge=True)
-
-    assert hunks == [
-        TextHunk(
-            [
-                _hunk_select(0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
-                _hunk_ctx(1, "NewObject"),
-                _hunk_select(2, "SetMember"),
-                _hunk_ctx(3, "}"),
-                _hunk_ctx(4, "SetMember"),
-                _hunk_ctx(5, 'Push register2, "GetMoneyForString"'),
-                _hunk_select(
-                    6, 'DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {'
-                ),
-                _hunk_ctx(7, 'loc4vs5: Push 0.1, 0.0, register1, "GetMoney"'),
-                _hunk_ctx(8, "CallMethod"),
-            ]
-        ),
-        TextHunk(
-            [
-                _hunk_ctx(11, 'Push "round"'),
-                _hunk_ctx(12, "CallMethod"),
-                _hunk_select(13, "Multiply"),
-                _hunk_ctx(14, "Return"),
-                _hunk_ctx(15, "}"),
-            ]
-        ),
-    ]
-
-
-def test_cut_text_hunks_with_context_merges_adjacent_and_overlapping_hunks():
-    sample = sample_text_lines("""
-        Push register1, "m_DisplayedData", 0.0, "Array"
-        NewObject
-        SetMember
-        }
-        SetMember
-        Push register2, "GetMoneyForString"
-        DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {
-        loc4vs5: Push 0.1, 0.0, register1, "GetMoney"
-        CallMethod
-        Push 1, "Math"
-        GetVariable
-        Push "round"
-        CallMethod
-        Multiply
-        Return
-        }
-
-        SetMember
-        Push register2, "GetMoney"
-        loc1312: DefineFunction2 "", 0, 5, false, false, true, false, true, false, false, true, false {
-        Push 0.0
-        loc78f:
-        Push -1
-        Add2
-        Push -1.3
-        Subtract
-        Push register2
-        Push "E_IS_Weight"
-        Push 2
-        SetMember
-        Push register2
-        Push "E_IS_Price"
-        Push 3
-        SetMember
-    """)
-
-    hunks = cut_text_hunks_with_context(sample, _lines_to_spans([1, 6, 7, 8, 19, 20, 27]), context_length=3, merge=True)
-
-    assert hunks == [
-        TextHunk(
-            [
-                _hunk_ctx(0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
-                _hunk_select(1, "NewObject"),
-                _hunk_ctx(2, "SetMember"),
-                _hunk_ctx(3, "}"),
-                _hunk_ctx(4, "SetMember"),
-                _hunk_ctx(5, 'Push register2, "GetMoneyForString"'),
-                _hunk_select(
-                    6, 'DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {'
-                ),
-                _hunk_select(7, 'loc4vs5: Push 0.1, 0.0, register1, "GetMoney"'),
-                _hunk_select(8, "CallMethod"),
-                _hunk_ctx(9, 'Push 1, "Math"'),
-                _hunk_ctx(10, "GetVariable"),
-                _hunk_ctx(11, 'Push "round"'),
-            ]
-        ),
-        TextHunk(
-            [
-                _hunk_ctx(16, ""),
-                _hunk_ctx(17, "SetMember"),
-                _hunk_ctx(18, 'Push register2, "GetMoney"'),
-                _hunk_select(
-                    19,
-                    'loc1312: DefineFunction2 "", 0, 5, false, false, true, false, true, false, false, true, false {',
-                ),
-                _hunk_select(20, "Push 0.0"),
-                _hunk_ctx(21, "loc78f:"),
-                _hunk_ctx(22, "Push -1"),
-                _hunk_ctx(23, "Add2"),
-                _hunk_ctx(24, "Push -1.3"),
-                _hunk_ctx(25, "Subtract"),
-                _hunk_ctx(26, "Push register2"),
-                _hunk_select(27, 'Push "E_IS_Weight"'),
-                _hunk_ctx(28, "Push 2"),
-                _hunk_ctx(29, "SetMember"),
-                _hunk_ctx(30, "Push register2"),
-            ]
-        ),
-    ]
-
-
-def test_cut_text_hunks_with_context_with_edge_selection():
+def test_cut_text_hunk_with_context_with_edge_selection():
     sample = sample_text_lines("""
         Push register1, "m_DisplayedData", 0.0, "Array"
         NewObject
@@ -1354,51 +1193,35 @@ def test_cut_text_hunks_with_context_with_edge_selection():
         Push register2, "GetMoney"
     """)
 
-    hunks = cut_text_hunks_with_context(sample, _lines_to_spans([0]), context_length=2, merge=False)
+    hunk = cut_text_hunk_with_context(sample, (0, 1), context_length=2)
 
-    assert hunks == [
-        TextHunk(
-            [
-                _hunk_select(0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
-                _hunk_ctx(1, "NewObject"),
-                _hunk_ctx(2, "Push -1"),
-            ]
-        )
-    ]
+    assert hunk == TextHunk(
+        [
+            _hunk_select(0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+            _hunk_ctx(1, "NewObject"),
+            _hunk_ctx(2, "Push -1"),
+        ]
+    )
 
-    hunks = cut_text_hunks_with_context(sample, _lines_to_spans([4]), context_length=2, merge=False)
+    hunk = cut_text_hunk_with_context(sample, (4, 5), context_length=2)
 
-    assert hunks == [
-        TextHunk([_hunk_ctx(2, "Push -1"), _hunk_ctx(3, "SetMember"), _hunk_select(4, 'Push register2, "GetMoney"')])
-    ]
+    assert hunk == TextHunk(
+        [_hunk_ctx(2, "Push -1"), _hunk_ctx(3, "SetMember"), _hunk_select(4, 'Push register2, "GetMoney"')]
+    )
 
-    hunks = cut_text_hunks_with_context(sample, _lines_to_spans([3, 4]), context_length=2, merge=False)
+    hunk = cut_text_hunk_with_context(sample, (3, 5), context_length=2)
 
-    assert hunks == [
-        TextHunk(
-            [
-                _hunk_ctx(1, "NewObject"),
-                _hunk_ctx(2, "Push -1"),
-                _hunk_select(3, "SetMember"),
-                _hunk_select(4, 'Push register2, "GetMoney"'),
-            ]
-        )
-    ]
+    assert hunk == TextHunk(
+        [
+            _hunk_ctx(1, "NewObject"),
+            _hunk_ctx(2, "Push -1"),
+            _hunk_select(3, "SetMember"),
+            _hunk_select(4, 'Push register2, "GetMoney"'),
+        ]
+    )
 
 
-def test_cut_text_hunks_with_context_with_empty_selection():
-    sample = sample_text_lines("""
-        Push register1, "m_DisplayedData", 0.0, "Array"
-        NewObject
-        Push -1
-        SetMember
-        Push register2, "GetMoney"
-    """)
-
-    assert cut_text_hunks_with_context(sample, []) == []
-
-
-def test_cut_text_hunks_with_context_with_exceeding_context():
+def test_cut_text_hunk_with_context_with_exceeding_context():
     sample = sample_text_lines("""
         Push register1, "m_DisplayedData", 0.0, "Array"
         NewObject
@@ -1408,50 +1231,44 @@ def test_cut_text_hunks_with_context_with_exceeding_context():
     """)
 
     # Demanded context goes beyond the start of the sample text.
-    hunks = cut_text_hunks_with_context(sample, _lines_to_spans([1]), context_length=2, merge=False)
+    hunk = cut_text_hunk_with_context(sample, (1, 2), context_length=2)
 
-    assert hunks == [
-        TextHunk(
-            [
-                _hunk_ctx(0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
-                _hunk_select(1, "NewObject"),
-                _hunk_ctx(2, "Push -1"),
-                _hunk_ctx(3, "SetMember"),
-            ]
-        )
-    ]
+    assert hunk == TextHunk(
+        [
+            _hunk_ctx(0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+            _hunk_select(1, "NewObject"),
+            _hunk_ctx(2, "Push -1"),
+            _hunk_ctx(3, "SetMember"),
+        ]
+    )
 
     # Demanded context goes beyond the end of the sample text.
-    hunks = cut_text_hunks_with_context(sample, _lines_to_spans([3]), context_length=2, merge=False)
+    hunk = cut_text_hunk_with_context(sample, (3, 4), context_length=2)
 
-    assert hunks == [
-        TextHunk(
-            [
-                _hunk_ctx(1, "NewObject"),
-                _hunk_ctx(2, "Push -1"),
-                _hunk_select(3, "SetMember"),
-                _hunk_ctx(4, 'Push register2, "GetMoney"'),
-            ]
-        )
-    ]
+    assert hunk == TextHunk(
+        [
+            _hunk_ctx(1, "NewObject"),
+            _hunk_ctx(2, "Push -1"),
+            _hunk_select(3, "SetMember"),
+            _hunk_ctx(4, 'Push register2, "GetMoney"'),
+        ]
+    )
 
     # Demanded context goes beyond both sample text bounds.
-    hunks = cut_text_hunks_with_context(sample, _lines_to_spans([2]), context_length=5, merge=False)
+    hunk = cut_text_hunk_with_context(sample, (2, 3), context_length=5)
 
-    assert hunks == [
-        TextHunk(
-            [
-                _hunk_ctx(0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
-                _hunk_ctx(1, "NewObject"),
-                _hunk_select(2, "Push -1"),
-                _hunk_ctx(3, "SetMember"),
-                _hunk_ctx(4, 'Push register2, "GetMoney"'),
-            ]
-        )
-    ]
+    assert hunk == TextHunk(
+        [
+            _hunk_ctx(0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+            _hunk_ctx(1, "NewObject"),
+            _hunk_select(2, "Push -1"),
+            _hunk_ctx(3, "SetMember"),
+            _hunk_ctx(4, 'Push register2, "GetMoney"'),
+        ]
+    )
 
 
-def test_cut_text_hunks_with_context_with_empty_spans():
+def test_cut_text_hunk_with_context_with_zero_width_spans():
     sample = sample_text_lines("""
         Push register1, "m_DisplayedData", 0.0, "Array"
         NewObject
@@ -1460,18 +1277,16 @@ def test_cut_text_hunks_with_context_with_empty_spans():
         Push register2, "GetMoney"
     """)
 
-    hunks = cut_text_hunks_with_context(sample, [(2, 2)], context_length=2, merge=False)
+    hunk = cut_text_hunk_with_context(sample, (2, 2), context_length=2)
 
-    assert hunks == [
-        TextHunk(
-            [
-                _hunk_ctx(0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
-                _hunk_ctx(1, "NewObject"),
-                _hunk_ctx(2, "Push -1"),
-                _hunk_ctx(3, "SetMember"),
-            ]
-        )
-    ]
+    assert hunk == TextHunk(
+        [
+            _hunk_ctx(0, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+            _hunk_ctx(1, "NewObject"),
+            _hunk_ctx(2, "Push -1"),
+            _hunk_ctx(3, "SetMember"),
+        ]
+    )
 
 
 def test_align_hunk_pair_edge_context():
@@ -1781,7 +1596,7 @@ def test_align_hunk_pair_edge_context_with_context_only():
 
 def test_align_hunk_pairs_does_not_merge_non_adjacent_hunks():
     # We have two unrelated diffs at lines 5 and 25, separated by 20 identical lines.
-    # With a context length of 5, `cut_text_hunks_with_context` produces TWO separate hunks per side.
+    # With a context length of 5, `cut_text_hunk_with_context` produces TWO separate hunks per side.
     # `align_hunk_pairs` must keep them as two separate pairs.
     # Gluing them together will produce erroneous hunks with non-contiguous lines.
     side_a = [f"line{i}" for i in range(30)]
@@ -1791,9 +1606,8 @@ def test_align_hunk_pairs_does_not_merge_non_adjacent_hunks():
     side_b[5] = "DIFF_B_FIRST"
     side_b[25] = "DIFF_B_SECOND"
 
-    hunks_a = cut_text_hunks_with_context(side_a, _lines_to_spans([5, 25]), context_length=5, merge=True)
-    hunks_b = cut_text_hunks_with_context(side_b, _lines_to_spans([5, 25]), context_length=5, merge=True)
-    assert len(hunks_a) == 2 and len(hunks_b) == 2  # sanity check: not pre-merged by cut_text_hunks
+    hunks_a = [cut_text_hunk_with_context(side_a, sp, context_length=5) for sp in [(5, 6), (25, 26)]]
+    hunks_b = [cut_text_hunk_with_context(side_b, sp, context_length=5) for sp in [(5, 6), (25, 26)]]
 
     pairs = align_hunk_pairs(hunks_a, hunks_b)
 
@@ -2888,5 +2702,202 @@ def test_diff_text_hunks():
                     _hunk_line(11, "GetMember", is_context=True),
                 ]
             ),
+        ]
+    )
+
+
+def test_TextHunk_merged_overlapping():
+    hunk_1 = TextHunk(
+        [
+            _hunk_ctx(5, 'Push register2, "GetMoneyForString"'),
+            _hunk_select(6, 'DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {'),
+            _hunk_select(7, 'loc4vs5: Push 0.1, 0.0, register1, "GetMoney"'),
+            _hunk_ctx(8, "CallMethod"),
+            _hunk_ctx(9, 'Push 1, "Math"'),
+        ]
+    )
+
+    hunk_2 = TextHunk(
+        [
+            _hunk_select(8, "CallMethod"),
+            _hunk_ctx(9, 'Push 1, "Math"'),
+            _hunk_select(10, "Push 'Tata', register10"),
+            _hunk_select(11, "GetVariable"),
+            _hunk_select(12, "Pop"),
+            _hunk_ctx(13, 'Push "DEBUG"'),
+        ]
+    )
+
+    assert hunk_1.merged(hunk_2) == TextHunk(
+        [
+            _hunk_ctx(5, 'Push register2, "GetMoneyForString"'),
+            _hunk_select(6, 'DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {'),
+            _hunk_select(7, 'loc4vs5: Push 0.1, 0.0, register1, "GetMoney"'),
+            _hunk_select(8, "CallMethod"),
+            _hunk_ctx(9, 'Push 1, "Math"'),
+            _hunk_select(10, "Push 'Tata', register10"),
+            _hunk_select(11, "GetVariable"),
+            _hunk_select(12, "Pop"),
+            _hunk_ctx(13, 'Push "DEBUG"'),
+        ]
+    )
+
+
+def test_TextHunk_merged_adjacent():
+    hunk_1 = TextHunk(
+        [
+            _hunk_ctx(11, 'Push "round"'),
+            _hunk_ctx(12, "CallMethod"),
+            _hunk_select(13, "Multiply"),
+            _hunk_ctx(14, "Return"),
+            _hunk_ctx(15, "}"),
+        ]
+    )
+
+    hunk_2 = TextHunk(
+        [
+            _hunk_ctx(16, "Push register1"),
+            _hunk_select(17, 'Push "prototype"'),
+            _hunk_select(18, "loc78j2:GetMember"),
+            _hunk_ctx(19, "StoreRegister 2"),
+            _hunk_ctx(20, "Pop"),
+        ]
+    )
+
+    assert hunk_1.merged(hunk_2) == TextHunk(
+        [
+            _hunk_ctx(11, 'Push "round"'),
+            _hunk_ctx(12, "CallMethod"),
+            _hunk_select(13, "Multiply"),
+            _hunk_ctx(14, "Return"),
+            _hunk_ctx(15, "}"),
+            _hunk_ctx(16, "Push register1"),
+            _hunk_select(17, 'Push "prototype"'),
+            _hunk_select(18, "loc78j2:GetMember"),
+            _hunk_ctx(19, "StoreRegister 2"),
+            _hunk_ctx(20, "Pop"),
+        ]
+    )
+
+
+def test_TextHunk_merged_commutative():
+    hunk_1 = TextHunk(
+        [
+            _hunk_ctx(11, 'Push "round"'),
+            _hunk_ctx(12, "CallMethod"),
+            _hunk_select(13, "Multiply"),
+            _hunk_ctx(14, "Return"),
+            _hunk_ctx(15, "}"),
+        ]
+    )
+
+    hunk_2 = TextHunk(
+        [
+            _hunk_ctx(16, "Push register1"),
+            _hunk_select(17, 'Push "prototype"'),
+            _hunk_select(18, "loc78j2:GetMember"),
+            _hunk_ctx(19, "StoreRegister 2"),
+            _hunk_ctx(20, "Pop"),
+        ]
+    )
+
+    assert hunk_2.merged(hunk_1) == TextHunk(
+        [
+            _hunk_ctx(11, 'Push "round"'),
+            _hunk_ctx(12, "CallMethod"),
+            _hunk_select(13, "Multiply"),
+            _hunk_ctx(14, "Return"),
+            _hunk_ctx(15, "}"),
+            _hunk_ctx(16, "Push register1"),
+            _hunk_select(17, 'Push "prototype"'),
+            _hunk_select(18, "loc78j2:GetMember"),
+            _hunk_ctx(19, "StoreRegister 2"),
+            _hunk_ctx(20, "Pop"),
+        ]
+    )
+
+
+def test_TextHunk_merged_three_hunks():
+    hunk_1 = TextHunk(
+        [
+            _hunk_ctx(11, 'Push "round"'),
+            _hunk_ctx(12, "CallMethod"),
+            _hunk_select(13, "Multiply"),
+            _hunk_ctx(14, "Return"),
+            _hunk_ctx(15, "}"),
+        ]
+    )
+
+    hunk_2 = TextHunk(
+        [
+            _hunk_ctx(16, "Push register1"),
+            _hunk_select(17, 'Push "prototype"'),
+            _hunk_select(18, "loc78j2:GetMember"),
+            _hunk_ctx(19, "StoreRegister 2"),
+            _hunk_ctx(20, "Pop"),
+        ]
+    )
+
+    hunk_3 = TextHunk(
+        [
+            _hunk_ctx(19, "StoreRegister 2"),
+            _hunk_ctx(20, "Pop"),
+            _hunk_select(21, "L6: Push register2"),
+            _hunk_select(22, 'Push "counterino"'),
+            _hunk_select(23, "GetVariable"),
+        ]
+    )
+
+    assert hunk_1.merged(hunk_2, hunk_3) == TextHunk(
+        [
+            _hunk_ctx(11, 'Push "round"'),
+            _hunk_ctx(12, "CallMethod"),
+            _hunk_select(13, "Multiply"),
+            _hunk_ctx(14, "Return"),
+            _hunk_ctx(15, "}"),
+            _hunk_ctx(16, "Push register1"),
+            _hunk_select(17, 'Push "prototype"'),
+            _hunk_select(18, "loc78j2:GetMember"),
+            _hunk_ctx(19, "StoreRegister 2"),
+            _hunk_ctx(20, "Pop"),
+            _hunk_select(21, "L6: Push register2"),
+            _hunk_select(22, 'Push "counterino"'),
+            _hunk_select(23, "GetVariable"),
+        ]
+    )
+
+
+def test_TextHunk_merged_empty_hunk():
+    assert TextHunk().merged(TextHunk()) == TextHunk()
+
+
+def test_TextHunk_merged_does_not_mutate_input():
+    hunk_1 = TextHunk(
+        [
+            _hunk_select(10, "Push 'Tata', register10"),
+            _hunk_select(11, "GetVariable"),
+        ]
+    )
+
+    hunk_2 = TextHunk(
+        [
+            _hunk_select(11, "GetVariable"),
+            _hunk_select(12, "Pop"),
+        ]
+    )
+
+    hunk_1.merged(hunk_2)
+
+    assert hunk_1 == TextHunk(
+        [
+            _hunk_select(10, "Push 'Tata', register10"),
+            _hunk_select(11, "GetVariable"),
+        ]
+    )
+
+    assert hunk_2 == TextHunk(
+        [
+            _hunk_select(11, "GetVariable"),
+            _hunk_select(12, "Pop"),
         ]
     )

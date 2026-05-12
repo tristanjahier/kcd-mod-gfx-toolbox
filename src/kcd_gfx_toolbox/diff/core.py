@@ -341,6 +341,24 @@ class TextHunk(list[TextHunkLine]):
     def to_str_list(self) -> list[str]:
         return [ln.text for ln in self]
 
+    def merged(self, *other: Self) -> Self:
+        """
+        Merge the hunk with another one.
+
+        When two or more lines sharing the same index are merged together, the first
+        non-context annotation in input order wins.
+        Resulting hunk lines are sorted by index.
+        """
+        deduped_merged: dict[int, TextHunkLine] = {}
+
+        for line in itertools.chain(self, *other):
+            known_line = deduped_merged.get(line.index)
+
+            if known_line is None or (known_line.is_context and not line.is_context):
+                deduped_merged[line.index] = line
+
+        return self.__class__(sorted(deduped_merged.values(), key=lambda ln: ln.index))
+
     def __repr__(self) -> str:
         line_padding = max((len(str(line.number)) for line in self), default=0)
         return "\n".join(ln.debug_repr(line_padding) for ln in self)
@@ -361,82 +379,31 @@ class DiffAnnotatedHunk(list[TextHunk]):
         return cls([text_hunk])
 
 
-def cut_text_hunks_with_context(
-    text_lines: list[str], spans: list[tuple[int, int]], context_length=3, merge: bool = False
-) -> list[TextHunk]:
+def cut_text_hunk_with_context(text_lines: list[str], span: tuple[int, int], context_length=3) -> TextHunk:
     """
-    Extract text hunks (groups of consecutive lines) around a subselection of line spans.
-    Capture up to `context_length` lines of context before and after the selected spans.
-    If `merge` is True, adjacent or overlapping hunks are merged.
+    Extract a text hunk (sequence of consecutive lines) around the input line span.
+    Capture up to `context_length` lines of context before and after the selected span.
     """
-    hunks: list[TextHunk] = []
+    if span[0] > span[1]:
+        raise ValueError(f"Provided line span is malformed: [{span[0]}:{span[1]}[.")
 
-    if not spans:
-        return hunks
+    if span[0] < 0 or span[1] > len(text_lines):
+        raise ValueError(f"Line selection contains an out-of-bounds span: [{span[0]}:{span[1]}[.")
 
-    if not text_lines:
-        return hunks
+    hunk = TextHunk()
 
-    for span in sorted(spans):
-        span = slice(span[0], span[1])  # convert tuple to slice for readability
+    for i in range(span[0] - context_length, span[0]):
+        if i >= 0:
+            hunk.append(TextHunkLine(i, text_lines[i], is_context=True))
 
-        if span.start < 0 or span.stop > len(text_lines):
-            raise ValueError(f"Line selection contains an out-of-bounds span: [{span.start}:{span.stop}[.")
+    for i, line in enumerate(text_lines[span[0] : span[1]], start=span[0]):
+        hunk.append(TextHunkLine(i, line, is_context=False))
 
-        if span.start > span.stop:
-            raise ValueError(f"Provided line span is malformed: [{span.start}:{span.stop}[.")
+    for i in range(span[1], span[1] + context_length):
+        if i < len(text_lines):
+            hunk.append(TextHunkLine(i, text_lines[i], is_context=True))
 
-        hunk: TextHunk = TextHunk()
-
-        for i in range(span.start - context_length, span.start):
-            if i >= 0:
-                hunk.append(TextHunkLine(i, text_lines[i], is_context=True))
-
-        for i, line in enumerate(text_lines[span], start=span.start):
-            hunk.append(TextHunkLine(i, line, is_context=False))
-
-        for i in range(span.stop, span.stop + context_length):
-            if i < len(text_lines):
-                hunk.append(TextHunkLine(i, text_lines[i], is_context=True))
-
-        hunks.append(hunk)
-
-    hunks.sort(key=lambda h: h[0].index)  # Sort hunks by first line number.
-
-    # Merge touching/overlapping hunks if required.
-    if not merge or len(hunks) < 2:
-        return hunks
-
-    merged_hunks = []
-    last_hunk = None
-
-    for hunk in hunks:
-        if last_hunk is None:
-            last_hunk = hunk
-            continue
-
-        hunk_first_line = hunk[0].index
-        last_hunk_last_line = last_hunk[-1].index
-
-        if last_hunk_last_line + 1 >= hunk_first_line:
-            last_hunk.extend(hunk)
-            deduped_hunk: dict[int, TextHunkLine] = {}
-
-            for line in last_hunk:
-                known_line = deduped_hunk.get(line.index)  # Last known line for that index.
-
-                if known_line is None or (known_line.is_context and not line.is_context):
-                    deduped_hunk[line.index] = line
-
-            last_hunk = TextHunk(deduped_hunk.values())
-
-        else:
-            merged_hunks.append(last_hunk)
-            last_hunk = hunk
-
-    merged_hunks.append(last_hunk)
-
-    return merged_hunks
+    return hunk
 
 
 def align_hunk_pair_edge_context(hunk_1: TextHunk, hunk_2: TextHunk) -> tuple[TextHunk, TextHunk]:
