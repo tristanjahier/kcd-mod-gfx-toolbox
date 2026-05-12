@@ -218,6 +218,37 @@ def _merge_overlapping_hunk_pairs(
     return merged_pairs
 
 
+def _assemble_block_hunk_pairs(
+    diff_spans: list[RenderDiffSpanPair], side_a_corpus: list[str], side_b_corpus: list[str]
+) -> list[tuple[TextHunk | None, TextHunk | None]]:
+    """
+    Cut a text hunk pair from each diff span in both corpora, merge adjacent or overlapping
+    pairs and align the edge context regions.
+    """
+    hunk_pairs: list[tuple[TextHunk | None, TextHunk | None]] = []
+
+    for span_a, span_b in diff_spans:
+        if span_a is not None:
+            ha = cut_text_hunk_with_context(side_a_corpus, span_a, context_length=5)
+        else:
+            ha = None
+
+        if span_b is not None:
+            hb = cut_text_hunk_with_context(side_b_corpus, span_b, context_length=5)
+        else:
+            hb = None
+
+        hunk_pairs.append((ha, hb))
+
+    hunk_pairs = _merge_overlapping_hunk_pairs(hunk_pairs)
+
+    hunk_pairs = [
+        align_hunk_pair_edge_context(ha, hb) if ha is not None and hb is not None else (ha, hb) for ha, hb in hunk_pairs
+    ]
+
+    return hunk_pairs
+
+
 def prepare_diffset_pcode_render(
     diffset: GfxDiffSet,
     normalized_script_blocks_a: dict[Path, list[PcodeBlock]],
@@ -246,28 +277,7 @@ def prepare_diffset_pcode_render(
         block_side_b = _find_pcode_block_by_name(script_b_blocks, block.side_b_name)
 
         block_a_lines, block_b_lines, diff_spans = _pcode_block_render_data(block, block_side_a, block_side_b)
-
-        hunk_pairs: list[tuple[TextHunk | None, TextHunk | None]] = []
-
-        for span_a, span_b in diff_spans:
-            if span_a is not None:
-                ha = cut_text_hunk_with_context(block_a_lines, span_a, context_length=5)
-            else:
-                ha = None
-
-            if span_b is not None:
-                hb = cut_text_hunk_with_context(block_b_lines, span_b, context_length=5)
-            else:
-                hb = None
-
-            hunk_pairs.append((ha, hb))
-
-        hunk_pairs = _merge_overlapping_hunk_pairs(hunk_pairs)
-
-        hunk_pairs = [
-            align_hunk_pair_edge_context(ha, hb) if ha is not None and hb is not None else (ha, hb)
-            for ha, hb in hunk_pairs
-        ]
+        hunk_pairs = _assemble_block_hunk_pairs(diff_spans, block_a_lines, block_b_lines)
 
         renderables.append(
             RenderableBlockDiff(
@@ -648,27 +658,7 @@ def prepare_diffset_actionscript_render(
                 "[yellow]Unable to map pcode lines to ActionScript source for this block. Falling back to normalized p-code.[/yellow]"
             )
 
-        hunk_pairs: list[tuple[TextHunk | None, TextHunk | None]] = []
-
-        for span_a, span_b in diff_spans:
-            if span_a is not None:
-                ha = cut_text_hunk_with_context(block_a_corpus_lines, span_a, context_length=5)
-            else:
-                ha = None
-
-            if span_b is not None:
-                hb = cut_text_hunk_with_context(block_b_corpus_lines, span_b, context_length=5)
-            else:
-                hb = None
-
-            hunk_pairs.append((ha, hb))
-
-        hunk_pairs = _merge_overlapping_hunk_pairs(hunk_pairs)
-
-        hunk_pairs = [
-            align_hunk_pair_edge_context(ha, hb) if ha is not None and hb is not None else (ha, hb)
-            for ha, hb in hunk_pairs
-        ]
+        hunk_pairs = _assemble_block_hunk_pairs(diff_spans, block_a_corpus_lines, block_b_corpus_lines)
 
         renderables.append(
             RenderableBlockDiff(
