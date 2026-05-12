@@ -24,6 +24,7 @@ from kcd_gfx_toolbox.workspace import Workspace
 from .core import (
     DiffAnnotatedHunk,
     TextHunk,
+    align_hunk_pair_edge_context,
     cut_text_hunk_with_context,
     diff_text_hunks,
     diff_texts,
@@ -262,6 +263,11 @@ def prepare_diffset_pcode_render(
             hunk_pairs.append((ha, hb))
 
         hunk_pairs = _merge_overlapping_hunk_pairs(hunk_pairs)
+
+        hunk_pairs = [
+            align_hunk_pair_edge_context(ha, hb) if ha is not None and hb is not None else (ha, hb)
+            for ha, hb in hunk_pairs
+        ]
 
         renderables.append(
             RenderableBlockDiff(
@@ -658,6 +664,11 @@ def prepare_diffset_actionscript_render(
             hunk_pairs.append((ha, hb))
 
         hunk_pairs = _merge_overlapping_hunk_pairs(hunk_pairs)
+
+        hunk_pairs = [
+            align_hunk_pair_edge_context(ha, hb) if ha is not None and hb is not None else (ha, hb)
+            for ha, hb in hunk_pairs
+        ]
 
         renderables.append(
             RenderableBlockDiff(
