@@ -2867,6 +2867,31 @@ def test_TextHunk_merged_three_hunks():
     )
 
 
+def test_TextHunk_merged_forbids_conflicting_line_contents():
+    hunk_1 = TextHunk(
+        [
+            _hunk_ctx(16, "Push register1"),
+            _hunk_select(17, 'Push "prototype"'),
+            _hunk_select(18, "loc78j2:GetMember"),
+            _hunk_ctx(19, "StoreRegister 2"),  # <- conflict here
+            _hunk_ctx(20, "Pop"),
+        ]
+    )
+
+    hunk_2 = TextHunk(
+        [
+            _hunk_ctx(19, "StoreRegister 3"),  # <- conflict here
+            _hunk_ctx(20, "Pop"),
+            _hunk_select(21, "L6: Push register2"),
+            _hunk_select(22, 'Push "counterino"'),
+            _hunk_select(23, "GetVariable"),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="Cannot merge text hunks: conflicting contents at line index"):
+        hunk_1.merged(hunk_2)
+
+
 def test_TextHunk_merged_empty_hunk():
     assert TextHunk().merged(TextHunk()) == TextHunk()
 

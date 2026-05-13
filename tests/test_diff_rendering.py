@@ -830,11 +830,11 @@ def test_merge_overlapping_hunk_pairs():
         (
             TextHunk(
                 [
-                    _hunk_ln(55, "Push 0"),
-                    _hunk_ln(56, 'Push "Array"'),
-                    _hunk_ln(57, "NewObject"),
-                    _hunk_ln(58, "StoreRegister 3"),
-                    _hunk_ln(59, "Pop"),
+                    _hunk_ln(56, "Push 0"),
+                    _hunk_ln(57, 'Push "Array"'),
+                    _hunk_ln(58, "NewObject"),
+                    _hunk_ln(59, "StoreRegister 3"),
+                    _hunk_ln(60, "Pop"),
                 ]
             ),
             TextHunk(
@@ -934,11 +934,11 @@ def test_merge_overlapping_hunk_pairs():
         (
             TextHunk(
                 [
-                    _hunk_ln(55, "Push 0"),
-                    _hunk_ln(56, 'Push "Array"'),
-                    _hunk_ln(57, "NewObject"),
-                    _hunk_ln(58, "StoreRegister 3"),
-                    _hunk_ln(59, "Pop"),
+                    _hunk_ln(56, "Push 0"),
+                    _hunk_ln(57, 'Push "Array"'),
+                    _hunk_ln(58, "NewObject"),
+                    _hunk_ln(59, "StoreRegister 3"),
+                    _hunk_ln(60, "Pop"),
                 ]
             ),
             TextHunk(

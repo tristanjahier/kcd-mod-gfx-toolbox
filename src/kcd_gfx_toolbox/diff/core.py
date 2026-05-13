@@ -354,6 +354,12 @@ class TextHunk(list[TextHunkLine]):
         for line in itertools.chain(self, *other):
             known_line = deduped_merged.get(line.index)
 
+            if known_line is not None and known_line.text != line.text:
+                raise ValueError(
+                    f"Cannot merge text hunks: conflicting contents at line index {line.index} "
+                    f"({known_line.text!r} vs {line.text!r})."
+                )
+
             if known_line is None or (known_line.is_context and not line.is_context):
                 deduped_merged[line.index] = line
 
