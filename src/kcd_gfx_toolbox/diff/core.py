@@ -341,6 +341,11 @@ class TextHunk(list[TextHunkLine]):
     def to_str_list(self) -> list[str]:
         return [ln.text for ln in self]
 
+    def reannotated(self, is_context: bool = False, is_deletion: bool = False, is_addition: bool = False) -> Self:
+        return self.__class__(
+            (ln.reannotate(is_context=is_context, is_deletion=is_deletion, is_addition=is_addition) for ln in self)
+        )
+
     def merged(self, *other: Self) -> Self:
         """
         Merge the hunk with another one.

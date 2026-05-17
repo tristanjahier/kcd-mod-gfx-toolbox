@@ -171,10 +171,10 @@ def _pcode_block_render_data(
 
 
 def _merge_overlapping_hunk_pairs(
-    hunk_pairs: list[tuple[TextHunk | None, TextHunk | None]],
+    hunk_pairs: list[tuple[TextHunk | None, TextHunk | None]], side_a_corpus: list[str], side_b_corpus: list[str]
 ) -> list[tuple[TextHunk | None, TextHunk | None]]:
     """
-    Merge text hunk pairs when they are adjacent or overlapping on both sides.
+    Merge text hunk pairs when they are adjacent or overlapping on at least one side.
 
     Require pairs to be sorted in ascending line order to work properly.
     """
@@ -201,13 +201,21 @@ def _merge_overlapping_hunk_pairs(
 
         last_hunk_a, last_hunk_b = last_pair
 
-        if (
-            last_hunk_a[-1].index + 1 >= hunk_a[0].index
-            and hunk_a[-1].index + 1 >= last_hunk_a[0].index
-            and last_hunk_b[-1].index + 1 >= hunk_b[0].index
-            and hunk_b[-1].index + 1 >= last_hunk_b[0].index
-        ):
+        side_a_contact = last_hunk_a[-1].index + 1 >= hunk_a[0].index and hunk_a[-1].index + 1 >= last_hunk_a[0].index
+        side_b_contact = last_hunk_b[-1].index + 1 >= hunk_b[0].index and hunk_b[-1].index + 1 >= last_hunk_b[0].index
+
+        if side_a_contact and side_b_contact:
             last_pair = (last_hunk_a.merged(hunk_a), last_hunk_b.merged(hunk_b))
+        elif side_a_contact and last_hunk_b[-1].index < hunk_b[0].index:
+            gap = cut_text_hunk_with_context(
+                side_b_corpus, (last_hunk_b[-1].index + 1, hunk_b[0].index), context_length=0
+            ).reannotated(is_context=True)
+            last_pair = (last_hunk_a.merged(hunk_a), last_hunk_b.merged(gap, hunk_b))
+        elif side_b_contact and last_hunk_a[-1].index < hunk_a[0].index:
+            gap = cut_text_hunk_with_context(
+                side_a_corpus, (last_hunk_a[-1].index + 1, hunk_a[0].index), context_length=0
+            ).reannotated(is_context=True)
+            last_pair = (last_hunk_a.merged(gap, hunk_a), last_hunk_b.merged(hunk_b))
         else:
             merged_pairs.append(last_pair)
             last_pair = (hunk_a, hunk_b)
@@ -240,7 +248,7 @@ def _assemble_block_hunk_pairs(
 
         hunk_pairs.append((ha, hb))
 
-    hunk_pairs = _merge_overlapping_hunk_pairs(hunk_pairs)
+    hunk_pairs = _merge_overlapping_hunk_pairs(hunk_pairs, side_a_corpus, side_b_corpus)
 
     hunk_pairs = [
         align_hunk_pair_edge_context(ha, hb) if ha is not None and hb is not None else (ha, hb) for ha, hb in hunk_pairs

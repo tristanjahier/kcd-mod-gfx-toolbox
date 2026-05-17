@@ -33,6 +33,11 @@ def _hunk_ctx(index: int, text: str) -> TextHunkLine:
     return _hunk_ln(index, text, is_context=True)
 
 
+def _fake_corpus_with_lines(lines: dict[int, str]) -> list[str]:
+    """Build a corpus with input indexed lines and fill in the gaps (from 0) with placeholders."""
+    return [lines.get(i, f"<filler line {i}>") for i in range(max(lines) + 1)]
+
+
 def test_convert_span_from_normalized_pcode_to_raw_start_anchor_span():
     normalized_block = PcodeBlock(
         lines=[
@@ -830,7 +835,6 @@ def test_merge_overlapping_hunk_pairs():
         (
             TextHunk(
                 [
-                    _hunk_ln(56, "Push 0"),
                     _hunk_ln(57, 'Push "Array"'),
                     _hunk_ln(58, "NewObject"),
                     _hunk_ln(59, "StoreRegister 3"),
@@ -849,6 +853,24 @@ def test_merge_overlapping_hunk_pairs():
         (
             TextHunk(
                 [
+                    _hunk_ctx(61, "Push register1"),
+                    _hunk_ctx(62, 'Push "GetSlot"'),
+                    _hunk_ctx(63, "CallMethod"),
+                    _hunk_ln(64, "StoreRegister 8"),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ln(62, 'Push "GetSlot"'),
+                    _hunk_ctx(63, "CallMethod"),
+                    _hunk_ln(64, "StoreRegister 9"),
+                    _hunk_ctx(65, "Pop"),
+                ]
+            ),
+        ),
+        (
+            TextHunk(
+                [
                     _hunk_ctx(124, "Push 0"),
                     _hunk_ctx(125, 'Push "init"'),
                     _hunk_ctx(126, "CallFunction"),
@@ -859,7 +881,9 @@ def test_merge_overlapping_hunk_pairs():
         ),
     ]
 
-    assert _merge_overlapping_hunk_pairs(hunk_pairs) == [
+    side_b_corpus = _fake_corpus_with_lines({61: "Push register1"})
+
+    assert _merge_overlapping_hunk_pairs(hunk_pairs, [], side_b_corpus) == [
         (
             None,
             TextHunk(
@@ -934,7 +958,215 @@ def test_merge_overlapping_hunk_pairs():
         (
             TextHunk(
                 [
-                    _hunk_ln(56, "Push 0"),
+                    _hunk_ln(57, 'Push "Array"'),
+                    _hunk_ln(58, "NewObject"),
+                    _hunk_ln(59, "StoreRegister 3"),
+                    _hunk_ln(60, "Pop"),
+                    _hunk_ctx(61, "Push register1"),
+                    _hunk_ctx(62, 'Push "GetSlot"'),
+                    _hunk_ctx(63, "CallMethod"),
+                    _hunk_ln(64, "StoreRegister 8"),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ln(57, "NewObject"),
+                    _hunk_ln(58, "StoreRegister 3"),
+                    _hunk_ln(59, "Pop"),
+                    _hunk_ln(60, "Push 0"),
+                    _hunk_ctx(61, "Push register1"),
+                    _hunk_ln(62, 'Push "GetSlot"'),
+                    _hunk_ctx(63, "CallMethod"),
+                    _hunk_ln(64, "StoreRegister 9"),
+                    _hunk_ctx(65, "Pop"),
+                ]
+            ),
+        ),
+        (
+            TextHunk(
+                [
+                    _hunk_ctx(124, "Push 0"),
+                    _hunk_ctx(125, 'Push "init"'),
+                    _hunk_ctx(126, "CallFunction"),
+                    _hunk_ln(127, "Pop"),
+                ]
+            ),
+            None,
+        ),
+    ]
+
+
+def test_merge_overlapping_hunk_pairs_both_sides_adjacent():
+    hunk_pairs = [
+        (
+            TextHunk(
+                [
+                    _hunk_ln(30, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+                    _hunk_ctx(31, "NewObject"),
+                    _hunk_ctx(32, "SetMember"),
+                    _hunk_ctx(33, "}"),
+                    _hunk_ctx(34, "SetMember"),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ln(30, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+                    _hunk_ctx(31, "NewObject"),
+                    _hunk_ctx(32, "SetMember"),
+                    _hunk_ctx(33, "}"),
+                    _hunk_ctx(34, "SetMember"),
+                ]
+            ),
+        ),
+        (
+            TextHunk(
+                [
+                    _hunk_ln(35, 'Push register2, "GetMoneyForString"'),
+                    _hunk_ctx(36, 'DefineFunction2 "", 0 {'),
+                    _hunk_ln(37, 'loc4vs5: Push 0.1, 0.0, register1, "GetMoney"'),
+                    _hunk_ctx(38, "CallMethod"),
+                    _hunk_ln(39, 'Push 1, "Math"'),
+                    _hunk_ctx(40, "GetVariable"),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ln(35, 'Push register3, "GetMoneyForString"'),
+                    _hunk_ctx(36, 'DefineFunction2 "", 0 {'),
+                    _hunk_ln(37, 'loc483n: Push 0.1, 0.0, register1, "ObtenirArgent"'),
+                    _hunk_ctx(38, "CallMethod"),
+                    _hunk_ln(39, 'Push 1.0, "Math"'),
+                    _hunk_ctx(40, "GetVariable"),
+                ]
+            ),
+        ),
+    ]
+
+    assert _merge_overlapping_hunk_pairs(hunk_pairs, [], []) == [
+        (
+            TextHunk(
+                [
+                    _hunk_ln(30, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+                    _hunk_ctx(31, "NewObject"),
+                    _hunk_ctx(32, "SetMember"),
+                    _hunk_ctx(33, "}"),
+                    _hunk_ctx(34, "SetMember"),
+                    _hunk_ln(35, 'Push register2, "GetMoneyForString"'),
+                    _hunk_ctx(36, 'DefineFunction2 "", 0 {'),
+                    _hunk_ln(37, 'loc4vs5: Push 0.1, 0.0, register1, "GetMoney"'),
+                    _hunk_ctx(38, "CallMethod"),
+                    _hunk_ln(39, 'Push 1, "Math"'),
+                    _hunk_ctx(40, "GetVariable"),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ln(30, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+                    _hunk_ctx(31, "NewObject"),
+                    _hunk_ctx(32, "SetMember"),
+                    _hunk_ctx(33, "}"),
+                    _hunk_ctx(34, "SetMember"),
+                    _hunk_ln(35, 'Push register3, "GetMoneyForString"'),
+                    _hunk_ctx(36, 'DefineFunction2 "", 0 {'),
+                    _hunk_ln(37, 'loc483n: Push 0.1, 0.0, register1, "ObtenirArgent"'),
+                    _hunk_ctx(38, "CallMethod"),
+                    _hunk_ln(39, 'Push 1.0, "Math"'),
+                    _hunk_ctx(40, "GetVariable"),
+                ]
+            ),
+        ),
+    ]
+
+
+def test_merge_overlapping_hunk_pairs_both_sides_overlapping():
+    hunk_pairs = [
+        (
+            TextHunk(
+                [
+                    _hunk_ln(30, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+                    _hunk_ctx(31, "NewObject"),
+                    _hunk_ln(32, "SetMember"),
+                    _hunk_ctx(33, "}"),
+                    _hunk_ctx(34, "SetMember"),
+                    _hunk_ctx(35, 'Push register2, "GetMoneyForString"'),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ln(30, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+                    _hunk_ctx(31, "NewObject"),
+                    _hunk_ln(32, "SetMember"),
+                    _hunk_ctx(33, "}"),
+                    _hunk_ctx(34, "SetMember"),
+                    _hunk_ctx(35, 'Push register3, "GetMoneyForString"'),
+                ]
+            ),
+        ),
+        (
+            TextHunk(
+                [
+                    _hunk_ln(35, 'Push register2, "GetMoneyForString"'),
+                    _hunk_ctx(36, 'DefineFunction2 "", 0 {'),
+                    _hunk_ln(37, 'loc4vs5: Push 0.1, 0.0, register1, "GetMoney"'),
+                    _hunk_ctx(38, "CallMethod"),
+                    _hunk_ln(39, 'Push 1, "Math"'),
+                    _hunk_ctx(40, "GetVariable"),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ln(35, 'Push register3, "GetMoneyForString"'),
+                    _hunk_ctx(36, 'DefineFunction2 "", 0 {'),
+                    _hunk_ln(37, 'loc483n: Push 0.1, 0.0, register1, "ObtenirArgent"'),
+                    _hunk_ctx(38, "CallMethod"),
+                    _hunk_ln(39, 'Push 1.0, "Math"'),
+                    _hunk_ctx(40, "GetVariable"),
+                ]
+            ),
+        ),
+    ]
+
+    assert _merge_overlapping_hunk_pairs(hunk_pairs, [], []) == [
+        (
+            TextHunk(
+                [
+                    _hunk_ln(30, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+                    _hunk_ctx(31, "NewObject"),
+                    _hunk_ln(32, "SetMember"),
+                    _hunk_ctx(33, "}"),
+                    _hunk_ctx(34, "SetMember"),
+                    _hunk_ln(35, 'Push register2, "GetMoneyForString"'),
+                    _hunk_ctx(36, 'DefineFunction2 "", 0 {'),
+                    _hunk_ln(37, 'loc4vs5: Push 0.1, 0.0, register1, "GetMoney"'),
+                    _hunk_ctx(38, "CallMethod"),
+                    _hunk_ln(39, 'Push 1, "Math"'),
+                    _hunk_ctx(40, "GetVariable"),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ln(30, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+                    _hunk_ctx(31, "NewObject"),
+                    _hunk_ln(32, "SetMember"),
+                    _hunk_ctx(33, "}"),
+                    _hunk_ctx(34, "SetMember"),
+                    _hunk_ln(35, 'Push register3, "GetMoneyForString"'),
+                    _hunk_ctx(36, 'DefineFunction2 "", 0 {'),
+                    _hunk_ln(37, 'loc483n: Push 0.1, 0.0, register1, "ObtenirArgent"'),
+                    _hunk_ctx(38, "CallMethod"),
+                    _hunk_ln(39, 'Push 1.0, "Math"'),
+                    _hunk_ctx(40, "GetVariable"),
+                ]
+            ),
+        ),
+    ]
+
+
+def test_merge_overlapping_hunk_pairs_both_sides_gap():
+    hunk_pairs = [
+        (
+            TextHunk(
+                [
                     _hunk_ln(57, 'Push "Array"'),
                     _hunk_ln(58, "NewObject"),
                     _hunk_ln(59, "StoreRegister 3"),
@@ -954,18 +1186,320 @@ def test_merge_overlapping_hunk_pairs():
             TextHunk(
                 [
                     _hunk_ctx(124, "Push 0"),
-                    _hunk_ctx(125, 'Push "init"'),
+                    _hunk_ln(125, 'Push "init"'),
                     _hunk_ctx(126, "CallFunction"),
                     _hunk_ln(127, "Pop"),
                 ]
             ),
+            TextHunk(
+                [
+                    _hunk_ctx(124, "Push 0"),
+                    _hunk_ln(125, 'Push "_init_"'),
+                    _hunk_ctx(126, "CallFunction"),
+                    _hunk_ln(127, "Return"),
+                ]
+            ),
+        ),
+    ]
+
+    assert _merge_overlapping_hunk_pairs(hunk_pairs, [], []) == [
+        (
+            TextHunk(
+                [
+                    _hunk_ln(57, 'Push "Array"'),
+                    _hunk_ln(58, "NewObject"),
+                    _hunk_ln(59, "StoreRegister 3"),
+                    _hunk_ln(60, "Pop"),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ln(57, "NewObject"),
+                    _hunk_ln(58, "StoreRegister 3"),
+                    _hunk_ln(59, "Pop"),
+                    _hunk_ln(60, "Push 0"),
+                ]
+            ),
+        ),
+        (
+            TextHunk(
+                [
+                    _hunk_ctx(124, "Push 0"),
+                    _hunk_ln(125, 'Push "init"'),
+                    _hunk_ctx(126, "CallFunction"),
+                    _hunk_ln(127, "Pop"),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ctx(124, "Push 0"),
+                    _hunk_ln(125, 'Push "_init_"'),
+                    _hunk_ctx(126, "CallFunction"),
+                    _hunk_ln(127, "Return"),
+                ]
+            ),
+        ),
+    ]
+
+
+def test_merge_overlapping_hunk_pairs_one_side_adjacent():
+    hunk_pairs = [
+        (
+            TextHunk(
+                [
+                    _hunk_ctx(213, "SetMember"),
+                    _hunk_ctx(214, "Push register2"),
+                    _hunk_ln(215, 'Push "GetRemoveCount"'),
+                    _hunk_ln(
+                        216,
+                        'DefineFunction2 "", 3, 12, false, false, true, false, true, false, false, true, false, 2, "index", 3, "count", 4, "remove" {',
+                    ),
+                    _hunk_ctx(
+                        217,
+                        'DefineFunction2 "computeTake", 2, 3, false, false, true, false, true, false, true, false, false, 1, "remaining", 2, "availableCount" {',
+                    ),
+                    _hunk_ctx(218, "Push register1"),
+                    _hunk_ctx(219, "Push register2"),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ctx(213, "SetMember"),
+                    _hunk_ln(214, "Push register2"),
+                    _hunk_ln(215, 'Push "GetRemoveCount"'),
+                    _hunk_ln(
+                        216,
+                        'DefineFunction2 "", 3, 12, false, false, true, false, true, false, false, true, false, 2, "index", 3, "count", 4, "remove" {',
+                    ),
+                    _hunk_ctx(
+                        217,
+                        'DefineFunction2 "computeTake", 2, 3, false, false, true, false, true, false, true, false, false, 1, "remaining", 2, "availableCount" {',
+                    ),
+                ]
+            ),
+        ),
+        (
+            TextHunk(
+                [
+                    _hunk_ctx(220, "Less2"),
+                    _hunk_ctx(221, "Not"),
+                    _hunk_ctx(222, "Not"),
+                    _hunk_ln(223, "If loc0631"),
+                    _hunk_ctx(224, "Push register2"),
+                    _hunk_ln(225, "Jump loc0636"),
+                    _hunk_ln(226, "loc0631:Push register1"),
+                    _hunk_ln(227, "loc0636:Return"),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ctx(220, "Less2"),
+                    _hunk_ctx(221, "Not"),
+                    _hunk_ctx(222, "Not"),
+                    _hunk_ln(223, "If loc0631"),
+                    _hunk_ctx(224, "Push register2"),
+                    _hunk_ln(225, "Jump loc0636"),
+                    _hunk_ln(226, "loc0631:Push register1"),
+                    _hunk_ln(227, "loc0636:Return"),
+                ]
+            ),
+        ),
+    ]
+
+    side_b_pcode = _fake_corpus_with_lines({218: "Push register1", 219: "Push register2"})
+
+    assert _merge_overlapping_hunk_pairs(hunk_pairs, [], side_b_pcode) == [
+        (
+            TextHunk(
+                [
+                    _hunk_ctx(213, "SetMember"),
+                    _hunk_ctx(214, "Push register2"),
+                    _hunk_ln(215, 'Push "GetRemoveCount"'),
+                    _hunk_ln(
+                        216,
+                        'DefineFunction2 "", 3, 12, false, false, true, false, true, false, false, true, false, 2, "index", 3, "count", 4, "remove" {',
+                    ),
+                    _hunk_ctx(
+                        217,
+                        'DefineFunction2 "computeTake", 2, 3, false, false, true, false, true, false, true, false, false, 1, "remaining", 2, "availableCount" {',
+                    ),
+                    _hunk_ctx(218, "Push register1"),
+                    _hunk_ctx(219, "Push register2"),
+                    _hunk_ctx(220, "Less2"),
+                    _hunk_ctx(221, "Not"),
+                    _hunk_ctx(222, "Not"),
+                    _hunk_ln(223, "If loc0631"),
+                    _hunk_ctx(224, "Push register2"),
+                    _hunk_ln(225, "Jump loc0636"),
+                    _hunk_ln(226, "loc0631:Push register1"),
+                    _hunk_ln(227, "loc0636:Return"),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ctx(213, "SetMember"),
+                    _hunk_ln(214, "Push register2"),
+                    _hunk_ln(215, 'Push "GetRemoveCount"'),
+                    _hunk_ln(
+                        216,
+                        'DefineFunction2 "", 3, 12, false, false, true, false, true, false, false, true, false, 2, "index", 3, "count", 4, "remove" {',
+                    ),
+                    _hunk_ctx(
+                        217,
+                        'DefineFunction2 "computeTake", 2, 3, false, false, true, false, true, false, true, false, false, 1, "remaining", 2, "availableCount" {',
+                    ),
+                    _hunk_ctx(218, "Push register1"),
+                    _hunk_ctx(219, "Push register2"),
+                    _hunk_ctx(220, "Less2"),
+                    _hunk_ctx(221, "Not"),
+                    _hunk_ctx(222, "Not"),
+                    _hunk_ln(223, "If loc0631"),
+                    _hunk_ctx(224, "Push register2"),
+                    _hunk_ln(225, "Jump loc0636"),
+                    _hunk_ln(226, "loc0631:Push register1"),
+                    _hunk_ln(227, "loc0636:Return"),
+                ]
+            ),
+        ),
+    ]
+
+
+def test_merge_overlapping_hunk_pairs_one_side_overlapping():
+    hunk_pairs = [
+        (
+            TextHunk(
+                [
+                    _hunk_ctx(527, 'Push "RemoveMoneySlot"'),
+                    _hunk_ctx(528, "CallMethod"),
+                    _hunk_ctx(529, "Pop"),
+                    _hunk_ln(530, "loc0aa5:Push true"),
+                    _hunk_ln(531, "Return"),
+                    _hunk_ln(532, "loc0aab:Push false"),
+                    _hunk_ctx(533, "Return"),
+                    _hunk_ctx(534, "}"),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ctx(530, 'Push "RemoveMoneySlot"'),
+                    _hunk_ctx(531, "CallMethod"),
+                    _hunk_ctx(532, "Pop"),
+                    _hunk_ctx(533, "loc0aaf:Push true"),
+                    _hunk_ctx(534, "Return"),
+                    _hunk_ctx(535, "loc0ab5:Push false"),
+                    _hunk_ctx(536, "Return"),
+                    _hunk_ctx(537, "}"),
+                ]
+            ),
+        ),
+        (
+            TextHunk(
+                [
+                    _hunk_ln(537, 'Push "DecrementProbe"'),
+                    _hunk_ln(
+                        538,
+                        'DefineFunction2 "", 1, 4, false, false, true, false, true, false, true, false, false, 1, "value" {',
+                    ),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ctx(536, "Return"),
+                    _hunk_ctx(537, "}"),
+                    _hunk_ctx(538, "SetMember"),
+                    _hunk_ln(539, "Push register2"),
+                    _hunk_ln(540, 'Push "DecrementProbe"'),
+                    _hunk_ctx(
+                        541,
+                        'DefineFunction2 "", 1, 4, false, false, true, false, true, false, true, false, false, 1, "value" {',
+                    ),
+                ]
+            ),
+        ),
+    ]
+
+    side_a_pcode = _fake_corpus_with_lines({535: "SetMember", 536: "Push register2"})
+
+    assert _merge_overlapping_hunk_pairs(hunk_pairs, side_a_pcode, []) == [
+        (
+            TextHunk(
+                [
+                    _hunk_ctx(527, 'Push "RemoveMoneySlot"'),
+                    _hunk_ctx(528, "CallMethod"),
+                    _hunk_ctx(529, "Pop"),
+                    _hunk_ln(530, "loc0aa5:Push true"),
+                    _hunk_ln(531, "Return"),
+                    _hunk_ln(532, "loc0aab:Push false"),
+                    _hunk_ctx(533, "Return"),
+                    _hunk_ctx(534, "}"),
+                    _hunk_ctx(535, "SetMember"),
+                    _hunk_ctx(536, "Push register2"),
+                    _hunk_ln(537, 'Push "DecrementProbe"'),
+                    _hunk_ln(
+                        538,
+                        'DefineFunction2 "", 1, 4, false, false, true, false, true, false, true, false, false, 1, "value" {',
+                    ),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ctx(530, 'Push "RemoveMoneySlot"'),
+                    _hunk_ctx(531, "CallMethod"),
+                    _hunk_ctx(532, "Pop"),
+                    _hunk_ctx(533, "loc0aaf:Push true"),
+                    _hunk_ctx(534, "Return"),
+                    _hunk_ctx(535, "loc0ab5:Push false"),
+                    _hunk_ctx(536, "Return"),
+                    _hunk_ctx(537, "}"),
+                    _hunk_ctx(538, "SetMember"),
+                    _hunk_ln(539, "Push register2"),
+                    _hunk_ln(540, 'Push "DecrementProbe"'),
+                    _hunk_ctx(
+                        541,
+                        'DefineFunction2 "", 1, 4, false, false, true, false, true, false, true, false, false, 1, "value" {',
+                    ),
+                ]
+            ),
+        ),
+    ]
+
+
+def test_merge_overlapping_hunk_pairs_singletons_pass_through():
+    hunk_pairs = [
+        (
             None,
+            TextHunk(
+                [
+                    _hunk_ln(30, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+                    _hunk_ctx(31, "NewObject"),
+                    _hunk_ln(32, "SetMember"),
+                    _hunk_ctx(33, "}"),
+                    _hunk_ctx(34, "SetMember"),
+                    _hunk_ctx(35, 'Push register3, "GetMoneyForString"'),
+                ]
+            ),
+        ),
+    ]
+
+    assert _merge_overlapping_hunk_pairs(hunk_pairs, [], []) == [
+        (
+            None,
+            TextHunk(
+                [
+                    _hunk_ln(30, 'Push register1, "m_DisplayedData", 0.0, "Array"'),
+                    _hunk_ctx(31, "NewObject"),
+                    _hunk_ln(32, "SetMember"),
+                    _hunk_ctx(33, "}"),
+                    _hunk_ctx(34, "SetMember"),
+                    _hunk_ctx(35, 'Push register3, "GetMoneyForString"'),
+                ]
+            ),
         ),
     ]
 
 
 def test_merge_overlapping_hunk_pairs_empty():
-    assert _merge_overlapping_hunk_pairs([]) == []
+    assert _merge_overlapping_hunk_pairs([], [], []) == []
 
 
 def test_merge_overlapping_hunk_pairs_does_nothing_with_one_pair():
@@ -986,10 +1520,10 @@ def test_merge_overlapping_hunk_pairs_does_nothing_with_one_pair():
         ),
     )
 
-    assert _merge_overlapping_hunk_pairs([pair]) == [pair]
+    assert _merge_overlapping_hunk_pairs([pair], [], []) == [pair]
 
 
-def test_merge_overlapping_hunk_pairs_handles_reverse_order_without_crashing():
+def test_merge_overlapping_hunk_pairs_handles_unsorted_input_without_crashing():
     hunk_pairs = [
         (
             TextHunk(
@@ -1025,9 +1559,43 @@ def test_merge_overlapping_hunk_pairs_handles_reverse_order_without_crashing():
                 ]
             ),
         ),
+        (
+            # This pair is unrealistic but it exercises an edge case that could crash
+            # the function if not handled properly.
+            TextHunk(
+                [
+                    _hunk_ctx(5, "Push 0"),
+                    _hunk_ln(6, 'Push "m_MapLegend"'),
+                    _hunk_ctx(7, "GetVariable"),
+                    _hunk_ctx(8, 'Push "GetTrackingAsociativArray"'),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ln(14, 'Push register9, "ObtenirArgent"'),
+                    _hunk_ctx(15, "CallMethod"),
+                    _hunk_ln(16, 'Push 1.0, "Math"'),
+                ]
+            ),
+        ),
+        (
+            # Mirror edge case.
+            TextHunk(
+                [
+                    _hunk_ctx(9, "CallMethod"),
+                    _hunk_ln(10, "NewObject"),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ln(10, "NewObject"),
+                    _hunk_ctx(11, "SetMember"),
+                ]
+            ),
+        ),
     ]
 
-    assert _merge_overlapping_hunk_pairs(hunk_pairs) == [
+    assert _merge_overlapping_hunk_pairs(hunk_pairs, [], []) == [
         (
             TextHunk(
                 [
@@ -1049,6 +1617,37 @@ def test_merge_overlapping_hunk_pairs_handles_reverse_order_without_crashing():
                     _hunk_ln(14, 'Push register9, "ObtenirArgent"'),
                     _hunk_ctx(15, "CallMethod"),
                     _hunk_ln(16, 'Push 1.0, "Math"'),
+                ]
+            ),
+        ),
+        (
+            TextHunk(
+                [
+                    _hunk_ctx(5, "Push 0"),
+                    _hunk_ln(6, 'Push "m_MapLegend"'),
+                    _hunk_ctx(7, "GetVariable"),
+                    _hunk_ctx(8, 'Push "GetTrackingAsociativArray"'),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ln(14, 'Push register9, "ObtenirArgent"'),
+                    _hunk_ctx(15, "CallMethod"),
+                    _hunk_ln(16, 'Push 1.0, "Math"'),
+                ]
+            ),
+        ),
+        (
+            TextHunk(
+                [
+                    _hunk_ctx(9, "CallMethod"),
+                    _hunk_ln(10, "NewObject"),
+                ]
+            ),
+            TextHunk(
+                [
+                    _hunk_ln(10, "NewObject"),
+                    _hunk_ctx(11, "SetMember"),
                 ]
             ),
         ),
@@ -1088,7 +1687,7 @@ def test_merge_overlapping_hunk_pairs_handles_empty_hunks_without_crashing():
         ),
     ]
 
-    assert _merge_overlapping_hunk_pairs(hunk_pairs) == [
+    assert _merge_overlapping_hunk_pairs(hunk_pairs, [], []) == [
         (
             TextHunk(
                 [
