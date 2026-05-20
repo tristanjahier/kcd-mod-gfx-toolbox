@@ -8,7 +8,7 @@ from rich.text import Text
 import typer
 from .avm1.pcode_parsing import parse_pcode_file
 from .avm1.pcode_normalization import split_into_blocks, normalize_block
-from .diff.split_layout import SplitLayout, SplitLayoutTextLine, SplitLayoutTextPane
+from .view.split_layout import SplitLayout, SplitLayoutTextLine, SplitLayoutTextPane
 from .swd import build_pcode_to_actionscript_line_map, parse_swd_file
 from .utils import console, print_error, read_file_lines
 from .workspace import Workspace

@@ -5,7 +5,7 @@ from rich.console import Console
 from rich.text import Text
 
 from kcd_gfx_toolbox.diff.core import DiffAnnotatedHunk, TextHunk, TextHunkLine
-from kcd_gfx_toolbox.diff.unified_layout import UnifiedLayout
+from kcd_gfx_toolbox.view.unified_layout import UnifiedLayout
 
 
 def _hunk_ctx(index: int, text: str) -> TextHunkLine:

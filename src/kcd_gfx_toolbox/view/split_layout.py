@@ -13,42 +13,9 @@ from rich.text import Text
 from pygments.lexer import Lexer
 from pygments.style import Style as PygmentsStyle
 from pygments.styles.material import MaterialStyle as DefaultPygmentStyle
-from pygments import lex as pygments_lex
 
-from .core import DiffAnnotatedHunk, TextHunkLine
-
-
-def _highlight_line(line: Text | str, lexer: Lexer, pygments_style: type[PygmentsStyle]) -> Text:
-    """
-    Tokenize a line of source code with Pygments and return a rich.Text with syntax highlighting.
-    The trailing newline appended by Pygments is stripped.
-    """
-    if isinstance(line, Text):
-        highlighted_line = line.blank_copy()  # keep original style and formatting
-    else:
-        highlighted_line = Text()
-
-    for token_type, value in pygments_lex(str(line), lexer):
-        value = value.rstrip("\n")
-
-        if not value:
-            continue
-
-        style_dict = pygments_style.style_for_token(token_type)
-        rich_styles = []
-
-        if color := style_dict.get("color"):
-            rich_styles.append(f"#{color}")
-        if style_dict.get("bold"):
-            rich_styles.append("bold")
-        if style_dict.get("italic"):
-            rich_styles.append("italic")
-        if style_dict.get("underline"):
-            rich_styles.append("underline")
-
-        highlighted_line.append(value, style=" ".join(rich_styles))
-
-    return highlighted_line
+from kcd_gfx_toolbox.diff.core import DiffAnnotatedHunk, TextHunkLine
+from .syntax_highlighting import highlight_line
 
 
 class SplitLayoutPane(ABC):
@@ -227,7 +194,7 @@ class SplitLayoutTextPane(SplitLayoutPairAlignablePane):
     def _render_line(self, line: SplitLayoutTextLine) -> tuple[Text, Text]:
         """Render a SplitLayoutTextLine into Rich table cells."""
         if self.syntax_lexer is not None:
-            line_text = _highlight_line(line.text, self.syntax_lexer, self.pygments_style)
+            line_text = highlight_line(line.text, self.syntax_lexer, self.pygments_style)
         else:
             line_text = line.text.copy()
 

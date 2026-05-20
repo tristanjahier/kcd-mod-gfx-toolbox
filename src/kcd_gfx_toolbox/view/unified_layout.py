@@ -6,8 +6,8 @@ from rich.console import Console, ConsoleOptions, RenderResult
 from rich.markup import escape
 from rich.text import Text
 
-from .core import DiffAnnotatedHunk
-from .unified_format import (
+from kcd_gfx_toolbox.diff.core import DiffAnnotatedHunk
+from kcd_gfx_toolbox.diff.unified_format import (
     unidiff_context_line,
     unidiff_deletion_line,
     unidiff_file_header,

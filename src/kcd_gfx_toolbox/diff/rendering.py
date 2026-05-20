@@ -30,8 +30,8 @@ from .core import (
     diff_texts,
 )
 from .gfx import GfxDiffSet, GfxScript, GfxScriptBlock
-from .split_layout import SplitLayout, SplitLayoutMessagePane
-from .unified_layout import UnifiedLayout
+from kcd_gfx_toolbox.view.split_layout import SplitLayout, SplitLayoutMessagePane
+from kcd_gfx_toolbox.view.unified_layout import UnifiedLayout
 
 
 class DiffSortOrder(StrEnum):
