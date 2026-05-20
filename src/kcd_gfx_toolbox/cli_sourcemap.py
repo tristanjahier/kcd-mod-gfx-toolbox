@@ -1,13 +1,14 @@
 from __future__ import annotations
 from typing import Annotated
 from pathlib import Path
+from pygments.lexers import ActionScriptLexer
 from rich.markup import escape
 from rich.rule import Rule
+from rich.text import Text
 import typer
-from rich.table import Table
-
 from .avm1.pcode_parsing import parse_pcode_file
 from .avm1.pcode_normalization import split_into_blocks, normalize_block
+from .diff.split_layout import SplitLayout, SplitLayoutTextLine, SplitLayoutTextPane
 from .swd import build_pcode_to_actionscript_line_map, parse_swd_file
 from .utils import console, print_error, read_file_lines
 from .workspace import Workspace
@@ -110,13 +111,8 @@ def command(
 
     console.line()
 
-    table = Table(box=None, show_edge=False, pad_edge=False, show_header=False, width=console.width)
-    table.add_column("", justify="right", style="dim")
-    table.add_column("", ratio=1, no_wrap=True, overflow="ellipsis")
-    table.add_column("", justify="right", style="dim")
-    table.add_column("", ratio=1, no_wrap=True, overflow="ellipsis")
-
-    table.add_row(style="on #17171a")
+    pcode_lines: list[SplitLayoutTextLine] = []
+    as_lines: list[SplitLayoutTextLine] = []
 
     last_known_as_line: int | None = None
 
@@ -130,17 +126,23 @@ def command(
             else:
                 as_line = last_known_as_line
 
-            as_text = escape(
-                actionscript_lines[as_line] if as_line is not None and as_line <= len(actionscript_lines) else ""
-            ).strip()
+            if as_line is not None and as_line < len(actionscript_lines):
+                as_text = Text(actionscript_lines[as_line])
+            else:
+                as_text = Text()
 
             if not is_direct:
-                as_text = f"[dim]{as_text}[/dim]"
+                as_text.style = "dim"
 
             src_line = src_line + 1
             as_line = (as_line + 1) if as_line is not None else "~"
 
-            table.add_row(f"{src_line:>6}", escape(pcode_line.render()), f"{as_line:>6}", as_text, style="on #17171a")
+            pcode_lines.append(SplitLayoutTextLine(gutter=str(src_line), text=pcode_line.render()))
+            as_lines.append(SplitLayoutTextLine(gutter=str(as_line), text=as_text))
 
-    table.add_row(style="on #17171a")
-    console.print(table)
+    view = SplitLayout(
+        SplitLayoutTextPane(pcode_lines, word_wrap=True),
+        SplitLayoutTextPane(as_lines, word_wrap=True, syntax_lexer=ActionScriptLexer()),
+    )
+
+    console.print(view)

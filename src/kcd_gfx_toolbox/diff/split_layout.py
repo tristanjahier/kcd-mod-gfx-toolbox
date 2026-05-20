@@ -18,14 +18,17 @@ from pygments import lex as pygments_lex
 from .core import DiffAnnotatedHunk, TextHunkLine
 
 
-def _highlight_line(line: str, lexer: Lexer, pygments_style: type[PygmentsStyle]) -> Text:
+def _highlight_line(line: Text | str, lexer: Lexer, pygments_style: type[PygmentsStyle]) -> Text:
     """
     Tokenize a line of source code with Pygments and return a rich.Text with syntax highlighting.
     The trailing newline appended by Pygments is stripped.
     """
-    rich_text = Text()
+    if isinstance(line, Text):
+        highlighted_line = line.blank_copy()  # keep original style and formatting
+    else:
+        highlighted_line = Text()
 
-    for token_type, value in pygments_lex(line, lexer):
+    for token_type, value in pygments_lex(str(line), lexer):
         value = value.rstrip("\n")
 
         if not value:
@@ -43,9 +46,9 @@ def _highlight_line(line: str, lexer: Lexer, pygments_style: type[PygmentsStyle]
         if style_dict.get("underline"):
             rich_styles.append("underline")
 
-        rich_text.append(value, style=" ".join(rich_styles))
+        highlighted_line.append(value, style=" ".join(rich_styles))
 
-    return rich_text
+    return highlighted_line
 
 
 class SplitLayoutPane(ABC):
@@ -54,6 +57,22 @@ class SplitLayoutPane(ABC):
 
     @abstractmethod
     def render(self, vertical_gap: int | None = None) -> RenderableType: ...
+
+
+class SplitLayoutPairAlignablePane(SplitLayoutPane):
+    @classmethod
+    @abstractmethod
+    def prerender_rows_in_pair(
+        cls,
+        left: SplitLayoutPairAlignablePane,
+        right: SplitLayoutPairAlignablePane,
+        console: Console,
+        left_pane_width: int,
+        right_pane_width: int,
+    ) -> None: ...
+
+    @abstractmethod
+    def prerender_rows(self) -> None: ...
 
 
 class SplitLayout:
@@ -84,14 +103,19 @@ class SplitLayout:
 
         left_pane_width, right_pane_width = self._compute_pane_widths(options.max_width)
 
-        if isinstance(self.left_pane, SplitLayoutCodePane) and isinstance(self.right_pane, SplitLayoutCodePane):
-            SplitLayoutCodePane.render_table_rows_in_pair(
+        if (
+            isinstance(self.left_pane, SplitLayoutPairAlignablePane)
+            and isinstance(self.right_pane, SplitLayoutPairAlignablePane)
+            and type(self.left_pane) is type(self.right_pane)
+        ):
+            type(self.left_pane).prerender_rows_in_pair(
                 self.left_pane, self.right_pane, console, left_pane_width, right_pane_width
             )
-        elif isinstance(self.left_pane, SplitLayoutCodePane):
-            self.left_pane.render_table_rows()
-        elif isinstance(self.right_pane, SplitLayoutCodePane):
-            self.right_pane.render_table_rows()
+        else:
+            if isinstance(self.left_pane, SplitLayoutPairAlignablePane):
+                self.left_pane.prerender_rows()
+            if isinstance(self.right_pane, SplitLayoutPairAlignablePane):
+                self.right_pane.prerender_rows()
 
         left_height = self.left_pane.compute_height(console, left_pane_width)
         right_height = self.right_pane.compute_height(console, right_pane_width)
@@ -126,7 +150,167 @@ class SplitLayout:
         return cls(left_pane, right_pane)
 
 
-class SplitLayoutCodePane(SplitLayoutPane):
+class SplitLayoutTextLine:
+    def __init__(self, gutter: Text | str, text: Text | str):
+        self.gutter: Text = gutter if isinstance(gutter, Text) else Text(gutter)
+        self.text: Text = text if isinstance(text, Text) else Text(text)
+
+
+class SplitLayoutTextPane(SplitLayoutPairAlignablePane):
+    def __init__(
+        self,
+        lines: list[SplitLayoutTextLine],
+        background_color: str | None = "#17171a",
+        padding: PaddingDimensions = (1, 1),
+        word_wrap: bool = False,
+        syntax_lexer: Lexer | None = None,
+        pygments_style: type[PygmentsStyle] | None = None,
+        alignment_filler_background_color: str | None = "#232326",
+    ):
+        self.lines = lines
+        self.background_color = background_color
+        self.padding = padding
+        self.word_wrap = word_wrap
+        self.syntax_lexer = syntax_lexer
+        self.pygments_style: type[PygmentsStyle] = pygments_style or DefaultPygmentStyle
+        self.alignment_filler_background_color = alignment_filler_background_color
+        self.gutter_min_width: int = 5
+        self.gutter_text_spacing: int = 3
+        self._gutter_width_cache: int | None = None
+        self._rows: list[tuple[Text, Text]] | None = None
+
+    def _compute_gutter_width(self) -> int:
+        """Maximum between min width and max length of gutter text."""
+        if self._gutter_width_cache is not None:
+            return self._gutter_width_cache
+
+        self._gutter_width_cache = max(
+            self.gutter_min_width,
+            max((len(line.gutter) for line in self.lines), default=0),
+        )
+
+        return self._gutter_width_cache
+
+    def compute_height(self, console: Console, pane_width: int) -> int:
+        """Compute the component height for a given width."""
+        top_padding, right_padding, bottom_padding, left_padding = Padding.unpack(self.padding)
+        gutter_width = self._compute_gutter_width()
+
+        assert self._rows is not None
+
+        if self.word_wrap:
+            # Approximate the width available for the text column.
+            text_width = max(1, pane_width - left_padding - right_padding - gutter_width - self.gutter_text_spacing)
+
+            content_height = 0
+            for row in self._rows:
+                # row[1] is the text cell.
+                content_height += max(1, len(row[1].wrap(console, text_width, overflow="ellipsis")))
+        else:
+            content_height = len(self._rows)
+
+        return content_height + top_padding + bottom_padding
+
+    def _compute_line_height(self, line: SplitLayoutTextLine, console: Console, pane_width: int) -> int:
+        """Compute the render height of a line for a given width."""
+        if not self.word_wrap:
+            return 1
+
+        _, right_padding, _, left_padding = Padding.unpack(self.padding)
+        gutter_width = self._compute_gutter_width()
+
+        # Compute the width available for the text column.
+        text_width = max(1, pane_width - left_padding - right_padding - gutter_width - self.gutter_text_spacing)
+
+        return max(1, len(line.text.wrap(console, text_width, overflow="ellipsis")))
+
+    def _render_line(self, line: SplitLayoutTextLine) -> tuple[Text, Text]:
+        """Render a SplitLayoutTextLine into Rich table cells."""
+        if self.syntax_lexer is not None:
+            line_text = _highlight_line(line.text, self.syntax_lexer, self.pygments_style)
+        else:
+            line_text = line.text.copy()
+
+        return (line.gutter.copy(), line_text)
+
+    def prerender_rows(self) -> None:
+        rows = []
+
+        for line in self.lines:
+            rows.append(self._render_line(line))
+
+        self._rows = rows
+
+    def _alignment_filler_row(self) -> tuple[Text, Text]:
+        """Return a row to fill an alignment gap on the shorter side."""
+        return (Text(""), Text("", style=Style(bgcolor=self.alignment_filler_background_color)))
+
+    @classmethod
+    def prerender_rows_in_pair(
+        cls,
+        left: SplitLayoutPairAlignablePane,
+        right: SplitLayoutPairAlignablePane,
+        console: Console,
+        left_pane_width: int,
+        right_pane_width: int,
+    ) -> None:
+        assert isinstance(left, SplitLayoutTextPane) and isinstance(right, SplitLayoutTextPane)
+
+        left_rows = []
+        right_rows = []
+
+        for left_line, right_line in zip_longest(left.lines, right.lines):
+            left_height = 0
+            right_height = 0
+
+            if left_line is not None:
+                left_rows.append(left._render_line(left_line))
+                left_height = left._compute_line_height(left_line, console, left_pane_width)
+
+            if right_line is not None:
+                right_rows.append(right._render_line(right_line))
+                right_height = right._compute_line_height(right_line, console, right_pane_width)
+
+            if left_height < right_height:
+                left_rows.extend(left._alignment_filler_row() for _ in range(right_height - left_height))
+
+            if left_height > right_height:
+                right_rows.extend(right._alignment_filler_row() for _ in range(left_height - right_height))
+
+        left._rows = left_rows
+        right._rows = right_rows
+
+    def render(self, vertical_gap: int | None = None) -> RenderableType:
+        if self._rows is None:
+            self.prerender_rows()
+
+        assert self._rows is not None
+
+        grid = Table.grid(expand=True, padding=(0, self.gutter_text_spacing), collapse_padding=True, pad_edge=False)
+        grid.add_column("gutter", justify="right", min_width=self.gutter_min_width, style="dim")
+        grid.add_column("line_text", ratio=1, no_wrap=(not self.word_wrap), overflow="ellipsis")
+
+        if self.background_color is not None:
+            bg_style = Style(bgcolor=self.background_color)
+            grid.row_styles = [bg_style]
+        else:
+            bg_style = Style.null()
+
+        for row in self._rows:
+            grid.add_row(*row)
+
+        if vertical_gap is not None:
+            # If this pane is shorter than its sibling, append blank rows to align them visually.
+            for _ in range(max(0, vertical_gap)):
+                grid.add_row("", "")
+
+        return Padding(grid, pad=self.padding, style=bg_style)
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        yield self.render()
+
+
+class SplitLayoutCodePane(SplitLayoutPairAlignablePane):
     def __init__(
         self,
         diffed_hunk: DiffAnnotatedHunk,
@@ -207,16 +391,23 @@ class SplitLayoutCodePane(SplitLayoutPane):
 
         return (str(line.number), text)
 
-    def render_table_rows(self):
+    def prerender_rows(self) -> None:
         if self.rows is None:
             self.rows = []
             for line in self.diffed_hunk.lines():
                 self.rows.append(self.render_text_hunk_line(line))
 
     @classmethod
-    def render_table_rows_in_pair(
-        cls, left: Self, right: Self, console: Console, left_pane_width: int, right_pane_width: int
-    ):
+    def prerender_rows_in_pair(
+        cls,
+        left: SplitLayoutPairAlignablePane,
+        right: SplitLayoutPairAlignablePane,
+        console: Console,
+        left_pane_width: int,
+        right_pane_width: int,
+    ) -> None:
+        assert isinstance(left, SplitLayoutCodePane) and isinstance(right, SplitLayoutCodePane)
+
         left.rows = []
         right.rows = []
 
@@ -256,7 +447,7 @@ class SplitLayoutCodePane(SplitLayoutPane):
         if self.background_color:
             grid.row_styles = [bg_style]
 
-        self.render_table_rows()
+        self.prerender_rows()
 
         for row in self.rows:
             grid.add_row(*row)
