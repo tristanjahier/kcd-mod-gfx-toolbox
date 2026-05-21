@@ -3,17 +3,10 @@
 from __future__ import annotations
 from collections.abc import Iterator
 from rich.console import Console, ConsoleOptions, RenderResult
-from rich.markup import escape
 from rich.text import Text
 
 from kcd_gfx_toolbox.diff.core import DiffAnnotatedHunk
-from kcd_gfx_toolbox.diff.unified_format import (
-    unidiff_context_line,
-    unidiff_deletion_line,
-    unidiff_file_header,
-    unidiff_hunk_header,
-    unidiff_insertion_line,
-)
+from kcd_gfx_toolbox.diff.unified_format import unidiff_file_diff
 
 
 class UnifiedLayout:
@@ -43,37 +36,7 @@ class UnifiedLayout:
         """
         Yield diff lines in "unified format" as Rich Text objects.
         """
-        yield Text.from_markup(f"[bold]{escape(unidiff_file_header(self.side_a_path, 'a'))}[/bold]")
-        yield Text.from_markup(f"[bold]{escape(unidiff_file_header(self.side_b_path, 'b'))}[/bold]")
-
-        for diffed_a, diffed_b in self.hunk_pairs:
-            a_lines = diffed_a.lines()
-            b_lines = diffed_b.lines()
-
-            if not a_lines and not b_lines:
-                continue
-
-            # 1-based start indices, with the unified-diff convention of 0 when the side has no lines.
-            a_start = a_lines[0].number if a_lines else 0
-            b_start = b_lines[0].number if b_lines else 0
-            hunk_header = unidiff_hunk_header(a_start, len(a_lines), b_start, len(b_lines))
-            yield Text.from_markup(f"[cyan]{hunk_header}[/cyan]")
-
-            # diff_text_hunks produces two DiffHunks of equal length whose segments are pairwise
-            # aligned: either a shared-context segment (both sides equal) or a replace/insert/
-            # delete segment (deletions on A, additions on B; one side may be an empty segment).
-            for seg_a, seg_b in zip(diffed_a, diffed_b):
-                is_context_seg = (seg_a and seg_a[0].is_context) or (seg_b and seg_b[0].is_context)
-
-                if is_context_seg:
-                    # Context lines are identical on both sides; emit only once.
-                    for ln in seg_a:
-                        yield Text(unidiff_context_line(ln.text))
-                else:
-                    for ln in seg_a:
-                        yield Text.from_markup(f"[red]{escape(unidiff_deletion_line(ln.text))}[/red]")
-                    for ln in seg_b:
-                        yield Text.from_markup(f"[green]{escape(unidiff_insertion_line(ln.text))}[/green]")
+        yield from unidiff_file_diff(self.side_a_path, self.side_b_path, self.hunk_pairs)
 
     def compute_height(self, console: Console, width: int) -> int:
         """Compute the component height for a given max output width, accounting for word wrap."""
