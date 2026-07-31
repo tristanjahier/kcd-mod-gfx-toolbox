@@ -28,18 +28,6 @@ Pop
 Push 0
 StoreRegister 3
 Pop
-Push undefined
-StoreRegister 4
-Pop
-Push undefined
-StoreRegister 5
-Pop
-Push undefined
-StoreRegister 6
-Pop
-Push undefined
-StoreRegister 7
-Pop
 L2:Push register3
 Push register2
 Push "length"

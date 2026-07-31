@@ -1,6 +1,7 @@
 import json
 import re
 from dataclasses import dataclass
+from enum import Enum, auto
 from pathlib import Path
 
 from kcd_gfx_toolbox.utils import safe_filename
@@ -728,6 +729,425 @@ def canonicalize_geturl2(lines: list[PcodeLine]) -> list[PcodeLine]:
     return canonicalized_lines
 
 
+def find_outer_function_boundaries(lines: list[PcodeLine]) -> tuple[int, int] | None:
+    """
+    Return `(header index, closing brace index)` of the block's outer function, or None if not found.
+    """
+    header_idx = next(
+        (i for i, line in enumerate(lines) if is_pcode_instruction(line) and line.is_function_definition()),
+        None,
+    )
+
+    if header_idx is None:
+        # Some blocks do not contain a function (e.g. top-level).
+        return None
+
+    return (header_idx, find_function_end_line(lines, header_idx))
+
+
+def is_branch_target(line: PcodeLine, referenced_labels: set[str]) -> bool:
+    """
+    Determine whether a jump can land on the line, i.e. whether its label is referenced.
+
+    Unreferenced labels are ignored, as `strip_unreferenced_label_definitions` would remove them anyway.
+    """
+    return line.label is not None and line.label.lower() in referenced_labels
+
+
+def is_undefined_register_initializer(lines: list[PcodeLine], i: int, referenced_labels: set[str]) -> bool:
+    """
+    Determine whether lines `i`, `i+1` and `i+2` form a `Push undefined` / `StoreRegister N` / `Pop` triple
+    where no line is a branch target.
+    """
+    push, store, pop = lines[i], lines[i + 1], lines[i + 2]
+
+    return bool(
+        is_pcode_instruction(push)
+        and push.opcode == "Push"
+        and len(push.operands) == 1
+        and push.operands[0].type == "symbol"
+        and push.operands[0].value == "undefined"
+        and not is_branch_target(push, referenced_labels)
+        and is_pcode_instruction(store)
+        and store.opcode == "StoreRegister"
+        and len(store.operands) == 1
+        and store.operands[0].type == "numeric"
+        and not is_branch_target(store, referenced_labels)
+        and is_pcode_instruction(pop)
+        and pop.opcode == "Pop"
+        and not pop.operands
+        and not is_branch_target(pop, referenced_labels)
+    )
+
+
+OPAQUE_CONTROL_FLOW_OPCODES = {
+    "Throw",
+    "Try",
+    "Catch",
+    "WaitForFrame",
+    "WaitForFrame2",
+}
+"""
+Opcodes that move control somewhere this analysis does not model, and therefore could reach anything.
+
+`Throw` lands on a handler, which is not modeled here. Note that it is deliberately not treated
+as an exit, because a handler in the same function would still be able to read a register.
+`Try` and `Catch` open exception-handling blocks: any instruction of a `Try` block can transfer
+control to its `Catch` block, and that is not modeled either.
+`WaitForFrame` and `WaitForFrame2` skip a number of *actions* rather than branching to a label,
+so their destination cannot be recovered from the operands the way `If` and `Jump` targets can.
+"""
+
+
+def find_prologue_undefined_initializers(lines: list[PcodeLine], start_idx: int, end_idx: int) -> list[int]:
+    """
+    Return the indices of every undefined-initializer triple in the function's straight-line prologue:
+    from the header up to the first referenced label definition, branch, or opaque control flow opcode.
+
+    Nested function definitions are stepped over as a whole, header line included. They are
+    self-contained, so neither their branches nor their own opening triples belong to the enclosing
+    prologue, and a label on a nested header does not end it either. That is harmless: the prologue
+    only selects candidates, and the read analysis decides whether each one can be dropped.
+    """
+    referenced_labels = list_label_references(lines)
+    triples: list[int] = []
+    i = start_idx + 1
+
+    while i <= end_idx and i < len(lines):
+        line = lines[i]
+
+        # Step over nested functions.
+        if is_pcode_instruction(line) and line.is_function_definition():
+            i = find_function_end_line(lines, i) + 1
+            continue
+
+        if is_branch_target(line, referenced_labels):
+            # A branch can land here, so we are no longer in "straight-line code".
+            break
+
+        if is_pcode_instruction(line) and (line.opcode in ["If", "Jump"] or line.opcode in OPAQUE_CONTROL_FLOW_OPCODES):
+            break
+
+        if i + 2 > end_idx or i + 2 >= len(lines):
+            # We reached the end and there are not enough lines for a triple.
+            break
+
+        if is_undefined_register_initializer(lines, i, referenced_labels):
+            triples.append(i)
+            i += 3
+            continue
+
+        i += 1
+
+    return triples
+
+
+class BranchResolution(Enum):
+    """
+    What a branch instruction resolves to when its target is not a line within the function scope.
+    """
+
+    LEAVES_FUNCTION = auto()
+    """
+    The target is not defined anywhere in the block.
+
+    In practice, it is always the instruction right after the block, which is the usual way of compiling
+    a bare `return;` in the middle of the function.
+    Running past the end of the function body is how control normally exits without returning a value in AVM1.
+
+    The function execution ends, so nothing beyond the branch can read the register, assuming registers are
+    private to the call.
+    """
+
+    UNRESOLVED = auto()
+    """
+    The destination is unknowable, so the branch is treated as potentially reaching everything.
+
+    Either the operand is not a label, or the target is defined in the block but outside the
+    scope being analysed: a nested function body, or the surrounding block code.
+
+    Note on "the surrounding block code": currently it catches jumps onto a trailing `SetMember`,
+    which in reality should resolve to `LEAVES_FUNCTION`. The model does not detect that case, and
+    letting it into `UNRESOLVED` is conservative.
+    """
+
+
+def resolve_branch_target(
+    line: PcodeInstruction, label_targets: dict[str, int], block_labels: set[str]
+) -> int | BranchResolution:
+    """
+    Resolve a branch instruction to a line within the same scope, or signal why it cannot be.
+
+    See `BranchResolution`.
+    """
+    if len(line.operands) != 1 or line.operands[0].type != "symbol":
+        return BranchResolution.UNRESOLVED
+
+    label = str(line.operands[0].value).lower()
+
+    if label in label_targets:
+        return label_targets[label]
+
+    if label in block_labels:
+        return BranchResolution.UNRESOLVED
+
+    return BranchResolution.LEAVES_FUNCTION
+
+
+def build_function_scope_control_flow(
+    lines: list[PcodeLine], scope_start_idx: int, scope_end_idx: int
+) -> tuple[dict[int, list[int]], set[int]] | None:
+    """
+    Build a successor map over the function scope, or return None when the scope holds
+    something this analysis cannot model, in which case no initializer may be dropped.
+
+    Nested function bodies are stepped over: defining a function does not execute it, so control
+    flows from the definition to whatever follows its closing brace.
+    """
+    # First collect every label definition _anywhere in the block_.
+    # It will be used to tell a branch apart from one that leaves the block, because labels that
+    # this scope does not own (a nested body's, or any surrounding block code etc.) are not exits.
+    block_labels: set[str] = {line.label.lower() for line in lines if line.label is not None}
+
+    # Then collect label definitions within the function scope (and their line indices).
+    label_targets: dict[str, int] = {}
+
+    # Also collect indices of flow graph nodes.
+    nodes: list[int] = []
+
+    i = scope_start_idx + 1  # start right after the function header
+
+    # Exclude the closing brace, because control leaves the function there,
+    # so it is not a node of the flow graph.
+    while i < scope_end_idx:
+        line = lines[i]
+
+        if isinstance(line, PcodeStructural):
+            return None  # a closing brace where none was expected: give up
+
+        if line.label is not None:
+            label_targets[line.label.lower()] = i
+
+        nodes.append(i)
+
+        # Step over nested functions.
+        if is_pcode_instruction(line) and line.is_function_definition():
+            i = find_function_end_line(lines, i) + 1
+            continue
+
+        i += 1
+
+    # Map every node to its immediate follower node index.
+    # It sounds trivial but it is NOT, because `nodes` has gaps wherever a nested function body was stepped over.
+    follower: dict[int, int] = {idx: nodes[pos + 1] for pos, idx in enumerate(nodes) if pos + 1 < len(nodes)}
+
+    successors: dict[int, list[int]] = {}
+    unresolved_branches: set[int] = set()
+
+    for idx in nodes:
+        line = lines[idx]
+
+        # No follower means the next line is the closing brace and control leaves the function.
+        fallthrough = [follower[idx]] if idx in follower else []
+
+        if not is_pcode_instruction(line):
+            # In this context, a non-instruction should be a blank line with a label.
+            successors[idx] = fallthrough
+            continue
+
+        if line.opcode == "Return":
+            successors[idx] = []
+        elif line.opcode in OPAQUE_CONTROL_FLOW_OPCODES:
+            unresolved_branches.add(idx)
+            successors[idx] = []
+        elif line.opcode in ["Jump", "If"]:
+            target = resolve_branch_target(line, label_targets, block_labels)
+
+            if target is BranchResolution.UNRESOLVED:
+                unresolved_branches.add(idx)
+                taken = []
+            elif target is BranchResolution.LEAVES_FUNCTION:
+                taken = []
+            else:
+                taken = [target]
+
+            if line.opcode == "Jump":  # Jump is unconditional
+                successors[idx] = taken
+            else:
+                successors[idx] = taken + fallthrough
+        else:
+            successors[idx] = fallthrough
+
+    return successors, unresolved_branches
+
+
+def line_reads_register(line: PcodeLine, register_index: str) -> bool:
+    """
+    Determine whether the line reads the given register.
+    """
+    if not is_pcode_instruction(line):
+        return False
+
+    for operand in line.operands:
+        if operand.type != "symbol":
+            continue
+
+        match = REGISTER_REFERENCE_RE.fullmatch(str(operand.value))
+
+        if match is not None and match.group("regindex") == register_index:
+            return True
+
+    return False
+
+
+def line_writes_register(line: PcodeLine, register_index: str) -> bool:
+    """
+    Determine whether the line writes the given register.
+    """
+    return bool(
+        is_pcode_instruction(line)
+        and line.opcode == "StoreRegister"
+        and line.operands
+        and line.operands[0].type == "numeric"
+        and str(line.operands[0].value) == register_index
+    )
+
+
+def undefined_initializer_could_be_read(
+    lines: list[PcodeLine], successors: dict[int, list[int]], unresolved_branches: set[int], triple_idx: int
+) -> bool:
+    """
+    Determine whether any execution path after the initialization could reach a read of `registerN`
+    before it is overwritten.
+
+    Every path is pruned at the first write, because beyond it the `undefined` value is gone anyway.
+    Conversely, reaching a read means that the initial value can be observed, so the initializer
+    carries meaning.
+
+    Paths leaving the function resolve to "no read", assuming the registers go away with the function execution.
+    Conservatively, a branch that the control-flow model could not make sense of counts as reading the value.
+    """
+    store_reg_line = lines[triple_idx + 1]
+    assert is_pcode_instruction(store_reg_line)
+    register_index = str(store_reg_line.operands[0].value)
+
+    pending = list(successors.get(triple_idx + 2, []))
+    visited: set[int] = set()
+
+    while pending:
+        idx = pending.pop()
+
+        if idx in visited:
+            continue
+
+        visited.add(idx)
+
+        if idx in unresolved_branches:
+            return True  # control goes somewhere unmodelled => conservatively assume it could be read
+
+        line = lines[idx]
+
+        if line_reads_register(line, register_index):
+            return True
+
+        if line_writes_register(line, register_index):
+            # The register is overwritten, so its initial value is dead from this point on.
+            # No need to continue on this path.
+            continue
+
+        pending.extend(successors.get(idx, []))
+
+    return False
+
+
+def drop_lines_preserving_sources(lines: list[PcodeLine], to_drop: set[int]) -> list[PcodeLine]:
+    """
+    Drop lines by index while keeping their raw p-code `source_lines` attached to a surviving neighbour.
+
+    Rendering derives a block's source span from its first and last line, so a dropped mapping is
+    merged backwards into the previous survivor, or forwards into the next survivor when the drop
+    happens at the very start of the block.
+    """
+    kept: list[PcodeLine] = []  # lines kept so far
+    last_dropped: list[PcodeLine] = []  # latest run of lines that we dropped
+
+    for i, line in enumerate(lines):
+        if i in to_drop:
+            last_dropped.append(line)
+            continue
+
+        # If we keep the current line and we have just dropped previous lines.
+        if last_dropped:
+            if kept:
+                # Attach source lines to the latest kept line.
+                kept[-1] = kept[-1].replace(source_lines=merge_pcode_lines_sources(kept[-1], *last_dropped))
+            else:
+                # Attach source lines to the current (kept) line.
+                line = line.replace(source_lines=merge_pcode_lines_sources(line, *last_dropped))
+
+            last_dropped = []
+
+        kept.append(line)
+
+    # Sources of lines dropped at the end of the block are attached to the last kept line.
+    if last_dropped and kept:
+        kept[-1] = kept[-1].replace(source_lines=merge_pcode_lines_sources(kept[-1], *last_dropped))
+
+    return kept
+
+
+def strip_dead_undefined_register_initializers(lines: list[PcodeLine]) -> list[PcodeLine]:
+    """
+    Remove `Push undefined` / `StoreRegister N` / `Pop` triples from a function's prologue
+    when no observable read can depend on the `undefined` value they set.
+
+    These explicit initializations are usually an artifact of decompilation/recompilation with ffdec.
+
+    Example:
+        DefineFunction "findCloud", 1, "id" {
+        Push undefined
+        StoreRegister 1
+        Pop
+        ...
+
+    The scope is the *outer* function of the block only; nested functions are left alone.
+    A triple is kept whenever control flow is ambiguous.
+
+    Caveat: it must run *before* `canonicalize_register_references_in_function_block` to ensure that the
+    potential gaps created by dropping `StoreRegister` instructions get closed.
+    """
+    scope = find_outer_function_boundaries(lines)
+
+    if scope is None:
+        return lines  # not a function block => no prologue, keep everything untouched
+
+    scope_start_idx, scope_end_idx = scope
+    initializer_triples = find_prologue_undefined_initializers(lines, scope_start_idx, scope_end_idx)
+
+    if not initializer_triples:
+        return lines
+
+    control_flow = build_function_scope_control_flow(lines, scope_start_idx, scope_end_idx)
+
+    if control_flow is None:
+        return lines  # unanalysable scope => keep everything untouched
+
+    successors, unresolved_branches = control_flow
+
+    to_drop: set[int] = set()
+
+    for triple_idx in initializer_triples:
+        if undefined_initializer_could_be_read(lines, successors, unresolved_branches, triple_idx):
+            continue
+
+        to_drop.update({triple_idx, triple_idx + 1, triple_idx + 2})
+
+    if not to_drop:
+        return lines
+
+    return drop_lines_preserving_sources(lines, to_drop)
+
+
 def normalize_block(block: PcodeBlock) -> PcodeBlock:
     """
     Normalize a p-code block with multiple obscure techniques.
@@ -736,6 +1156,7 @@ def normalize_block(block: PcodeBlock) -> PcodeBlock:
     lines = canonicalize_push_lines(lines)
     lines = canonicalize_numeric_literals(lines)
     lines = canonicalize_function_definition_headers(lines)
+    lines = strip_dead_undefined_register_initializers(lines)
     lines = canonicalize_register_references_in_function_block(lines)
     lines = strip_unreferenced_label_definitions(lines)
     lines = canonicalize_labels(lines)

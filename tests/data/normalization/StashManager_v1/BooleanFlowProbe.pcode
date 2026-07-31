@@ -1,12 +1,6 @@
 Push register2
 Push "BooleanFlowProbe"
 DefineFunction "", 2, "x", "y" {
-Push undefined
-StoreRegister 1
-Pop
-Push undefined
-StoreRegister 2
-Pop
 Push register3
 Push register4
 Less2

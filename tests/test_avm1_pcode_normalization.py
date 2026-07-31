@@ -18,6 +18,7 @@ from kcd_gfx_toolbox.avm1.pcode_normalization import (
     normalize_file,
     normalize_not_not_if_patterns,
     split_into_blocks,
+    strip_dead_undefined_register_initializers,
     strip_unreferenced_label_definitions,
 )
 from kcd_gfx_toolbox.avm1.pcode_parsing import parse_pcode_file
@@ -1490,6 +1491,653 @@ def test_canonicalize_geturl2():
     """)
 
 
+def test_strip_dead_undefined_register_initializers_leaves_non_function_blocks_untouched():
+    pcode_sample = sample_pcode("""
+        Push undefined
+        StoreRegister 1
+        Pop
+        Push "x"
+        Trace
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == [ln.render() for ln in pcode_sample.lines]
+
+
+def test_strip_dead_undefined_register_initializers_ignores_the_undefined_string_literal():
+    pcode_sample = sample_pcode("""
+        DefineFunction "SetItemLabel", 0 {
+        Push "undefined"
+        StoreRegister 1
+        Pop
+        Push "x"
+        Trace
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == [ln.render() for ln in pcode_sample.lines]
+
+
+def test_strip_dead_undefined_register_initializers_prologue_steps_over_nested_functions():
+    # The `If L0` line in the nested function must not end the outer prologue,
+    # and its own initializer triple is out of scope.
+    pcode_sample = sample_pcode("""
+        DefineFunction "InitPlayerMenu", 0 {
+        Push "helper"
+        DefineFunction "", 0 {
+        Push undefined
+        StoreRegister 1
+        Pop
+        Push register2
+        If L0
+        L0:Push 1
+        Return
+        }
+        SetVariable
+        Push undefined
+        StoreRegister 1
+        Pop
+        Push 5
+        StoreRegister 1
+        Pop
+        Push register1
+        Return
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == sample_text_lines("""
+        DefineFunction "InitPlayerMenu", 0 {
+        Push "helper"
+        DefineFunction "", 0 {
+        Push undefined
+        StoreRegister 1
+        Pop
+        Push register2
+        If L0
+        L0:Push 1
+        Return
+        }
+        SetVariable
+        Push 5
+        StoreRegister 1
+        Pop
+        Push register1
+        Return
+        }
+    """)
+
+
+def test_strip_dead_undefined_register_initializers_prologue_stops_at_the_first_referenced_label():
+    # `L0` is targeted by `Jump L0` at the end, meaning that we are no longer in the prologue.
+    # The triple itself is unlabeled and register1 is never read: only this boundary prevents the drop.
+    pcode_sample = sample_pcode("""
+        DefineFunction "AnimateCompass", 0 {
+        L0:Push "x"
+        Trace
+        Push undefined
+        StoreRegister 1
+        Pop
+        Jump L0
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == [ln.render() for ln in pcode_sample.lines]
+
+
+def test_strip_dead_undefined_register_initializers_prologue_does_not_stop_at_an_unreferenced_label():
+    # Nothing jumps to `L0`, so it does not end the prologue. Otherwise, the result would depend on
+    # whether `strip_unreferenced_label_definitions` has already run, and normalization would not be idempotent.
+    pcode_sample = sample_pcode("""
+        DefineFunction "RefreshCompass", 0 {
+        L0:Push "x"
+        Trace
+        Push undefined
+        StoreRegister 1
+        Pop
+        Push "y"
+        Trace
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == sample_text_lines("""
+        DefineFunction "RefreshCompass", 0 {
+        L0:Push "x"
+        Trace
+        Push "y"
+        Trace
+        }
+    """)
+
+
+def test_strip_dead_undefined_register_initializers_prologue_stops_at_the_first_branch():
+    # The code after a branch may not run, so we are no longer in the prologue.
+    # The triple itself is unlabeled and register1 is never read: only this boundary prevents the drop.
+    pcode_sample = sample_pcode("""
+        DefineFunction "UpdateMinimap", 0 {
+        Push register2
+        If L0
+        Push undefined
+        StoreRegister 1
+        Pop
+        Push "x"
+        Trace
+        L0:Push "y"
+        Trace
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == [ln.render() for ln in pcode_sample.lines]
+
+
+def test_strip_dead_undefined_register_initializers_prologue_stops_at_a_waitforframe():
+    # Dropping an initializer triple after a `WaitForFrame` instruction is forbidden because
+    # it would shift the instructions that would be skipped by `WaitForFrame`.
+    pcode_sample = sample_pcode("""
+        DefineFunction "ShowSplashScreen", 0 {
+        WaitForFrame 5, 3
+        Push undefined
+        StoreRegister 1
+        Pop
+        Push 7
+        StoreRegister 1
+        Pop
+        Push register1
+        Return
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == [ln.render() for ln in pcode_sample.lines]
+
+
+def test_strip_dead_undefined_register_initializers_drops_a_triple_with_an_unreferenced_label():
+    # Nothing jumps to `L0`, so the label does not prevent the drop. Otherwise, the result would depend on
+    # whether `strip_unreferenced_label_definitions` has already run, and normalization would not be idempotent.
+    pcode_sample = sample_pcode("""
+        DefineFunction "RefreshCodex", 0 {
+        Push "x"
+        Trace
+        Push undefined
+        L0:StoreRegister 1
+        Pop
+        Push "y"
+        Trace
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == sample_text_lines("""
+        DefineFunction "RefreshCodex", 0 {
+        Push "x"
+        Trace
+        Push "y"
+        Trace
+        }
+    """)
+
+
+def test_strip_dead_undefined_register_initializers_drops_when_the_register_is_never_read():
+    # The initializer is the only write and there is no read at all: nothing can read the initial value.
+    pcode_sample = sample_pcode("""
+        DefineFunction "RefreshInventory", 0 {
+        Push undefined
+        StoreRegister 3
+        Pop
+        Push "done"
+        Trace
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == sample_text_lines("""
+        DefineFunction "RefreshInventory", 0 {
+        Push "done"
+        Trace
+        }
+    """)
+
+
+def test_strip_dead_undefined_register_initializers_drops_when_every_branch_overwrites():
+    # Exhaustive if/else: both arms write register1, so nothing can read its initial value.
+    pcode_sample = sample_pcode("""
+        DefineFunction "IsCursorInBounds", 2, "x", "y" {
+        Push undefined
+        StoreRegister 1
+        Pop
+        Push register2
+        If L0
+        Push true
+        StoreRegister 1
+        Pop
+        Jump L1
+        L0:Push false
+        StoreRegister 1
+        Pop
+        L1:Push register1
+        Return
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == sample_text_lines("""
+        DefineFunction "IsCursorInBounds", 2, "x", "y" {
+        Push register2
+        If L0
+        Push true
+        StoreRegister 1
+        Pop
+        Jump L1
+        L0:Push false
+        StoreRegister 1
+        Pop
+        L1:Push register1
+        Return
+        }
+    """)
+
+
+def test_strip_dead_undefined_register_initializers_drops_when_a_branch_leaves_the_function():
+    # `loc9443` is not defined in this function: this is the usual case where an `if (cond) return;`
+    # compiles to a jump landing just past the block. That ends the function execution, and registers
+    # should be scoped to it, so no read can follow it.
+    # Here the only other path writes register1 first, leaving nothing able to observe `undefined` anyway.
+    pcode_sample = sample_pcode("""
+        DefineFunction "UpdateHealthBar", 0 {
+        Push undefined
+        StoreRegister 1
+        Pop
+        Push register2
+        If loc9443
+        Push 1
+        StoreRegister 1
+        Pop
+        Push register1
+        Return
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == sample_text_lines("""
+        DefineFunction "UpdateHealthBar", 0 {
+        Push register2
+        If loc9443
+        Push 1
+        StoreRegister 1
+        Pop
+        Push register1
+        Return
+        }
+    """)
+
+
+def test_strip_dead_undefined_register_initializers_drops_when_the_read_is_after_a_return():
+    # Nothing after `Return` runs, so the read below cannot observe the initializer value.
+    pcode_sample = sample_pcode("""
+        DefineFunction "CloseMenu", 0 {
+        Push undefined
+        StoreRegister 1
+        Pop
+        Push 0
+        Return
+        Push register1
+        Return
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == sample_text_lines("""
+        DefineFunction "CloseMenu", 0 {
+        Push 0
+        Return
+        Push register1
+        Return
+        }
+    """)
+
+
+def test_strip_dead_undefined_register_initializers_drops_when_the_read_is_after_a_jump():
+    # The read right after `Jump L0` never runs, and the jump target overwrites register1.
+    pcode_sample = sample_pcode("""
+        DefineFunction "SkipCutscene", 0 {
+        Push undefined
+        StoreRegister 1
+        Pop
+        Jump L0
+        Push register1
+        Trace
+        L0:Push 1
+        StoreRegister 1
+        Pop
+        Push register1
+        Return
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == sample_text_lines("""
+        DefineFunction "SkipCutscene", 0 {
+        Jump L0
+        Push register1
+        Trace
+        L0:Push 1
+        StoreRegister 1
+        Pop
+        Push register1
+        Return
+        }
+    """)
+
+
+def test_strip_dead_undefined_register_initializers_keeps_a_triple_with_a_referenced_label():
+    # `If L0` lands on the initializer's `Push`: dropping the triple would remove a branch target.
+    # register1 is never read: only the label prevents the drop.
+    pcode_sample = sample_pcode("""
+        DefineFunction "UpdateJournal", 0 {
+        L0:Push undefined
+        StoreRegister 1
+        Pop
+        Push register2
+        If L0
+        Push "y"
+        Trace
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == [ln.render() for ln in pcode_sample.lines]
+
+    # Same with the label on `StoreRegister`.
+    pcode_sample = sample_pcode("""
+        DefineFunction "UpdateJournal", 0 {
+        Push undefined
+        L0:StoreRegister 1
+        Pop
+        Push register2
+        If L0
+        Push "y"
+        Trace
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == [ln.render() for ln in pcode_sample.lines]
+
+    # Same with the label on `Pop`.
+    pcode_sample = sample_pcode("""
+        DefineFunction "UpdateJournal", 0 {
+        Push undefined
+        StoreRegister 1
+        L0:Pop
+        Push register2
+        If L0
+        Push "y"
+        Trace
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == [ln.render() for ln in pcode_sample.lines]
+
+
+def test_strip_dead_undefined_register_initializers_keeps_when_an_overwrite_can_be_jumped_over():
+    # There is a write to register1, but with `If L0` it can be skipped entirely.
+    pcode_sample = sample_pcode("""
+        DefineFunction "GetTooltipText", 1, "flag" {
+        Push undefined
+        StoreRegister 1
+        Pop
+        Push register2
+        If L0
+        Push 1
+        StoreRegister 1
+        Pop
+        L0:Push register1
+        Return
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == [ln.render() for ln in pcode_sample.lines]
+
+
+def test_strip_dead_undefined_register_initializers_keeps_when_a_read_follows_a_conditional_exit():
+    # Same as `drops_when_a_branch_leaves_the_function`, except that here one execution path can read
+    # the initial value of `register1`.
+    pcode_sample = sample_pcode("""
+        DefineFunction "GetQuestMarker", 0 {
+        Push undefined
+        StoreRegister 1
+        Pop
+        Push register2
+        If loc9443
+        Push register1
+        Return
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == [ln.render() for ln in pcode_sample.lines]
+
+
+def test_strip_dead_undefined_register_initializers_keeps_when_a_branch_targets_the_block_past_the_function():
+    # `L9` is on the block's trailing `SetMember`: inside the block, outside the function. That is
+    # the address right after the function body, so in reality this jump leaves the function, the
+    # way a bare `return;` does. The control-flow analysis currently cannot tell it apart from a jump
+    # into surrounding block code, so it resolves it as `UNRESOLVED` and keeps the initializer.
+    # This is a known limitation (see `BranchResolution.UNRESOLVED`); if it is improved, the expected
+    # output becomes a drop.
+    pcode_sample = sample_pcode("""
+        Push register2
+        Push "OnCloseClicked"
+        DefineFunction "", 0 {
+        Push undefined
+        StoreRegister 1
+        Pop
+        Jump L9
+        Push 1
+        StoreRegister 1
+        Pop
+        Push register1
+        Return
+        }
+        L9:SetMember
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == [ln.render() for ln in pcode_sample.lines]
+
+
+def test_strip_dead_undefined_register_initializers_does_not_flow_into_a_nested_function_body():
+    # Defining the nested function does not execute it, so its write to register1 does not protect the read
+    # of register1 that follows its definition in the outer function body.
+    pcode_sample = sample_pcode("""
+        DefineFunction "BuildTradeMenu", 0 {
+        Push undefined
+        StoreRegister 1
+        Pop
+        Push "helper"
+        DefineFunction "", 0 {
+        Push 1
+        StoreRegister 1
+        Pop
+        }
+        SetVariable
+        Push register1
+        Return
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == [ln.render() for ln in pcode_sample.lines]
+
+
+def test_strip_dead_undefined_register_initializers_flows_through_a_blank_labeled_line():
+    # Both paths from `If L0` go through the blank `L0:` line and reach the read of register1.
+    pcode_sample = sample_pcode("""
+        DefineFunction "ToggleMapLayer", 0 {
+        Push undefined
+        StoreRegister 1
+        Pop
+        Push register2
+        If L0
+        L0:
+        Push register1
+        Return
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == [ln.render() for ln in pcode_sample.lines]
+
+
+def test_strip_dead_undefined_register_initializers_keeps_when_a_throw_can_be_reached():
+    # `Throw` lands on a handler that could read `register1`, whereas the write below it never runs.
+    pcode_sample = sample_pcode("""
+        DefineFunction "ValidateRecipe", 0 {
+        Push undefined
+        StoreRegister 1
+        Pop
+        Push "error"
+        Throw
+        Push 1
+        StoreRegister 1
+        Pop
+        Push register1
+        Return
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == [ln.render() for ln in pcode_sample.lines]
+
+
+def test_strip_dead_undefined_register_initializers_keeps_when_a_try_can_be_reached():
+    # Control can reach `Try` with the initial value of `register1` still in place,
+    # and what happens from there is not modeled.
+    pcode_sample = sample_pcode("""
+        DefineFunction "LoadSaveGame", 0 {
+        Push undefined
+        StoreRegister 1
+        Pop
+        Try register2 {
+        Push "x"
+        Trace
+        }
+        Catch {
+        Push "y"
+        Trace
+        }
+        Push register1
+        Return
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == [ln.render() for ln in pcode_sample.lines]
+
+
+def test_strip_dead_undefined_register_initializers_keeps_when_a_waitforframe_can_be_reached():
+    # `WaitForFrame` skips a number of actions instead of branching to a label, so the write to
+    # register1 below may or may not run. Static analysis cannot determine the runtime behaviour,
+    # so we must keep the initializer.
+    pcode_sample = sample_pcode("""
+        DefineFunction "ShowLoadingScreen", 0 {
+        Push undefined
+        StoreRegister 1
+        Pop
+        WaitForFrame 5, 2
+        Push 1
+        StoreRegister 1
+        Pop
+        Push register1
+        Return
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == [ln.render() for ln in pcode_sample.lines]
+
+
+def test_strip_dead_undefined_register_initializers_keeps_when_a_waitforframe2_can_be_reached():
+    # Same as `WaitForFrame` above: the write to register1 may be skipped.
+    pcode_sample = sample_pcode("""
+        DefineFunction "ShowSavingScreen", 0 {
+        Push undefined
+        StoreRegister 1
+        Pop
+        Push 5
+        WaitForFrame2 2
+        Push 1
+        StoreRegister 1
+        Pop
+        Push register1
+        Return
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == [ln.render() for ln in pcode_sample.lines]
+
+
+def test_strip_dead_undefined_register_initializers_preserves_source_lines_of_dropped_lines():
+    pcode_sample = sample_pcode("""
+        DefineFunction "ClearNotifications", 0 {
+        Push undefined
+        StoreRegister 3
+        Pop
+        Push "done"
+        Trace
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == sample_text_lines("""
+        DefineFunction "ClearNotifications", 0 {
+        Push "done"
+        Trace
+        }
+    """)
+
+    # No source line is stranded: the block still maps onto exactly what it mapped onto before.
+    assert sorted({s for ln in stripped for s in ln.source_lines}) == sorted(
+        {s for ln in pcode_sample.lines for s in ln.source_lines}
+    )
+
+    # The dropped triple's mapping lands on the preceding survivor, the function header.
+    assert stripped[0].source_lines == [1, 2, 3, 4]
+
+
 def test_normalize_block():
     raw_block_files = {p.name: p for p in list_data_files("pcode/blocks/StashManager_v1", glob="*.pcode")}
     normalized_block_files = {p.name: p for p in list_data_files("normalization/StashManager_v1", glob="*.pcode")}
@@ -1509,6 +2157,39 @@ def test_normalize_block():
         assert test_normalized_block == fixture_normalized_block, (
             f"Block {block_file_name} does not match with its normalized fixture."
         )
+
+
+def test_normalize_block_closes_the_register_gap_left_by_a_dead_undefined_initializer():
+    # register1 is initialized but never read: its initializer triple will be dropped.
+    # As it was the only write of register1, its index, 1, will be freed and the register
+    # canonicalization pass that comes after must close the gap.
+    # If that canonicalization pass was done _before_ stripping dead initializers,
+    # register2 would keep its index, hence resulting in different register numbers between
+    # two scripts that only really differ by that dead initializer.
+    pcode_sample = sample_pcode("""
+        DefineFunction "UpdateWeightDisplay", 0 {
+        Push undefined
+        StoreRegister 1
+        Pop
+        Push 7
+        StoreRegister 2
+        Pop
+        Push register2
+        Return
+        }
+    """)
+
+    normalized = normalize_block(pcode_sample)
+
+    assert [ln.render() for ln in normalized.lines] == sample_text_lines("""
+        DefineFunction "UpdateWeightDisplay", 0 {
+        Push 7
+        StoreRegister 1
+        Pop
+        Push register1
+        Return
+        }
+    """)
 
 
 def test_normalize_file(tmp_path: Path):
