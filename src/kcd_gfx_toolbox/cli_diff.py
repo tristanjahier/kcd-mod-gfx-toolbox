@@ -3,8 +3,8 @@
 from __future__ import annotations
 import json
 from typing import Annotated, Literal, cast
-from click.core import ParameterSource
 import typer
+from typer._click.core import ParameterSource
 
 from .workspace import Workspace, temp_workspace_name_for_file
 from .avm1.pcode_parsing import PcodeBlock, PcodeLine, parse_pcode_file
