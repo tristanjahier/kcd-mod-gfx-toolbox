@@ -1,14 +1,14 @@
 from kcd_gfx_toolbox.avm1.pcode_alignment import (
-    neutralize_labels_in_line,
-    extract_jump_target_label_from_line,
-    neutralize_registers_in_line,
-    extract_registers_from_line,
-    build_label_alignment_map,
-    build_register_alignment_map,
-    remap_labels_in_line,
-    remap_registers_in_line,
     align_labels_in_text,
     align_registers_in_text,
+    build_label_alignment_map,
+    build_register_alignment_map,
+    extract_jump_target_label_from_line,
+    extract_registers_from_line,
+    neutralize_labels_in_line,
+    neutralize_registers_in_line,
+    remap_labels_in_line,
+    remap_registers_in_line,
 )
 from tests.helpers import sample_text_lines
 

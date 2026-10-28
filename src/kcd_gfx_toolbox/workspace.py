@@ -101,10 +101,7 @@ class Workspace:
         if not actionscript_files:
             return False
 
-        if {f.with_suffix("") for f in pcode_files} != {f.with_suffix("") for f in actionscript_files}:
-            return False
-
-        return True
+        return {f.with_suffix("") for f in pcode_files} == {f.with_suffix("") for f in actionscript_files}
 
     def normalization_dir(self) -> Path:
         """Return the directory that contains normalized p-code artifacts."""
@@ -156,10 +153,7 @@ class Workspace:
 
         sourcemap_files = list_tree_files(directory, glob="*.pcode.map")
 
-        if {f.name for f in pcode_files} != {f.with_suffix("").name for f in sourcemap_files}:
-            return False
-
-        return True
+        return {f.name for f in pcode_files} == {f.with_suffix("").name for f in sourcemap_files}
 
     def normalization_dir_has_valid_contents(self) -> bool:
         """

@@ -1,5 +1,6 @@
-from textwrap import dedent
 from pathlib import Path
+from textwrap import dedent
+
 from kcd_gfx_toolbox.avm1.pcode_parsing import PcodeBlock, parse_pcode_text
 
 _PROJECT_ROOT_PATH: Path | None = None

@@ -1,7 +1,9 @@
 """Unified diff rendering using Rich."""
 
 from __future__ import annotations
+
 from collections.abc import Iterator
+
 from rich.console import Console, ConsoleOptions, RenderResult
 from rich.text import Text
 
@@ -52,6 +54,4 @@ class UnifiedLayout:
 
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
         self._last_render_height = self.compute_height(console, options.max_width)
-
-        for line in self._lines:
-            yield line
+        yield from self._lines

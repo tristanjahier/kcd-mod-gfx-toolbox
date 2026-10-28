@@ -6,6 +6,7 @@ See https://www.gnu.org/software/diffutils/manual/html_node/Detailed-Unified.htm
 
 from collections.abc import Iterator
 from typing import Literal
+
 from rich.markup import escape
 from rich.text import Text
 

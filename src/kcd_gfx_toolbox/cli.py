@@ -1,5 +1,6 @@
 import typer
-from kcd_gfx_toolbox import cli_extract, cli_normalize, cli_diff, cli_sourcemap
+
+from kcd_gfx_toolbox import cli_diff, cli_extract, cli_normalize, cli_sourcemap
 
 app = typer.Typer(
     help="A toolbox for extracting, normalizing and diffing Scaleform GFx files (used by Kingdom Come: Deliverance).",

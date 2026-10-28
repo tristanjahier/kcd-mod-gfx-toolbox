@@ -1,11 +1,13 @@
 import json
-from pathlib import Path
-from dataclasses import dataclass
 import re
-from .pcode_utils import REGISTER_REFERENCE_RE
+from dataclasses import dataclass
+from pathlib import Path
+
+from kcd_gfx_toolbox.utils import safe_filename
+
 from .pcode_parsing import (
-    PcodeBlock,
     PcodeBlankLineWithLabel,
+    PcodeBlock,
     PcodeInstruction,
     PcodeLine,
     PcodeOperand,
@@ -14,7 +16,7 @@ from .pcode_parsing import (
     merge_pcode_lines_sources,
     parse_pcode_file,
 )
-from kcd_gfx_toolbox.utils import safe_filename
+from .pcode_utils import REGISTER_REFERENCE_RE
 
 
 def find_function_name_and_start_line(
@@ -633,7 +635,7 @@ def canonicalize_constant_pool(lines: list[PcodeLine]) -> list[PcodeLine]:
     canonicalized_lines: list[PcodeLine] = []
 
     for line in lines:
-        if not is_pcode_instruction(line) or not line.opcode == "ConstantPool":
+        if not is_pcode_instruction(line) or line.opcode != "ConstantPool":
             canonicalized_lines.append(line)
             continue
 

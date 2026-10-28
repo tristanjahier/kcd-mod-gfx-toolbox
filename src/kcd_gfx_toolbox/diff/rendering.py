@@ -8,9 +8,10 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Literal
-from rich.markup import escape
+
 from pygments.lexer import Lexer
 from pygments.lexers import ActionScriptLexer
+from rich.markup import escape
 
 from kcd_gfx_toolbox.avm1.pcode_alignment import align_labels_in_text, align_registers_in_text
 from kcd_gfx_toolbox.avm1.pcode_parsing import PcodeBlock, merge_pcode_lines_sources
@@ -20,7 +21,10 @@ from kcd_gfx_toolbox.swd import (
     propagate_mapped_lines_to_subsequent_unmapped_lines,
 )
 from kcd_gfx_toolbox.utils import read_file_lines
+from kcd_gfx_toolbox.view.split_layout import SplitLayout, SplitLayoutMessagePane
+from kcd_gfx_toolbox.view.unified_layout import UnifiedLayout
 from kcd_gfx_toolbox.workspace import Workspace
+
 from .core import (
     DiffAnnotatedHunk,
     TextHunk,
@@ -30,8 +34,6 @@ from .core import (
     diff_texts,
 )
 from .gfx import GfxDiffSet, GfxScript, GfxScriptBlock
-from kcd_gfx_toolbox.view.split_layout import SplitLayout, SplitLayoutMessagePane
-from kcd_gfx_toolbox.view.unified_layout import UnifiedLayout
 
 
 class DiffSortOrder(StrEnum):

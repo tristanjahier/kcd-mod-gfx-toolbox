@@ -1,4 +1,6 @@
+from collections import Counter
 from pathlib import Path
+
 from kcd_gfx_toolbox.avm1.pcode_normalization import (
     canonicalize_constant_pool,
     canonicalize_function_definition_headers,
@@ -19,8 +21,8 @@ from kcd_gfx_toolbox.avm1.pcode_normalization import (
     strip_unreferenced_label_definitions,
 )
 from kcd_gfx_toolbox.avm1.pcode_parsing import parse_pcode_file
-from .helpers import sample_pcode, sample_text, sample_text_lines, list_data_files, read_data_file, get_test_data_dir
-from collections import Counter
+
+from .helpers import get_test_data_dir, list_data_files, read_data_file, sample_pcode, sample_text, sample_text_lines
 
 
 def test_find_function_name_and_start_line_single_line():

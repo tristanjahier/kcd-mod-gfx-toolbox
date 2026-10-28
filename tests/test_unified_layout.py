@@ -1,5 +1,6 @@
 from math import floor
 from random import randint
+
 import pytest
 from rich.console import Console
 from rich.text import Text

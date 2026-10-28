@@ -1,10 +1,9 @@
-#!/usr/bin/env python3
-
-from pathlib import Path
 import subprocess
+from pathlib import Path
 from typing import Annotated
-from rich.markup import escape
+
 import typer
+from rich.markup import escape
 
 from .extraction import extract_gfx_contents, resolve_ffdec
 from .utils import console, ensure_empty_dir, print_error

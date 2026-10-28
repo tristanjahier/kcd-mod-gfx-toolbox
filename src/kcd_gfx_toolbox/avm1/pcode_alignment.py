@@ -1,5 +1,6 @@
-from collections import Counter, defaultdict
 import difflib
+from collections import Counter, defaultdict
+
 from .pcode_parsing import tokenize_line
 from .pcode_utils import (
     LABEL_REFERENCED_LINE_RE,

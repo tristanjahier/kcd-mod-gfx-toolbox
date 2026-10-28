@@ -1,4 +1,5 @@
 import pytest
+
 from kcd_gfx_toolbox.avm1 import pcode_parsing
 from kcd_gfx_toolbox.avm1.pcode_parsing import (
     PcodeBlankLineWithLabel,
@@ -10,6 +11,7 @@ from kcd_gfx_toolbox.avm1.pcode_parsing import (
     parse_pcode_lines,
     tokenize_line,
 )
+
 from .helpers import get_test_data_dir, sample_text, sample_text_lines
 
 

@@ -1,20 +1,23 @@
 """Side-by-side diff rendering using Rich."""
 
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from itertools import chain, zip_longest
 from math import ceil, floor
 from typing import Self
-from rich.console import Console, ConsoleOptions, RenderResult, RenderableType
+
+from pygments.lexer import Lexer
+from pygments.style import Style as PygmentsStyle
+from pygments.styles.material import MaterialStyle as DefaultPygmentStyle
+from rich.console import Console, ConsoleOptions, RenderableType, RenderResult
 from rich.padding import Padding, PaddingDimensions
 from rich.style import Style
 from rich.table import Table
 from rich.text import Text
-from pygments.lexer import Lexer
-from pygments.style import Style as PygmentsStyle
-from pygments.styles.material import MaterialStyle as DefaultPygmentStyle
 
 from kcd_gfx_toolbox.diff.core import DiffAnnotatedHunk, TextHunkLine
+
 from .syntax_highlighting import highlight_line
 
 

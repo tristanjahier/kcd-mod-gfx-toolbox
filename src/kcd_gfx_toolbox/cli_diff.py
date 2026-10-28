@@ -1,13 +1,24 @@
-#!/usr/bin/env python3
-
 from __future__ import annotations
+
 import json
+import shutil
+import subprocess
+from pathlib import Path
 from typing import Annotated, Literal, cast
+
 import typer
+from rich import box
+from rich.markup import escape
+from rich.rule import Rule
+from rich.table import Table
 from typer._click.core import ParameterSource
 
-from .workspace import Workspace, temp_workspace_name_for_file
+from .avm1.pcode_normalization import NormalizationResult, normalize_file
 from .avm1.pcode_parsing import PcodeBlock, PcodeLine, parse_pcode_file
+from .diff.core import (
+    diff_file_trees_basic,
+    hunks_are_equal,
+)
 from .diff.gfx import (
     GfxDiffSet,
     GfxDiffTreeNode,
@@ -20,8 +31,8 @@ from .diff.gfx import (
 from .diff.rendering import (
     DiffFilter,
     DiffLayout,
-    RenderableBlockDiff,
     DiffSortOrder,
+    RenderableBlockDiff,
     build_split_layout_for_hunk_pair,
     build_unified_layout_for_block_diff,
     prepare_diffset_actionscript_render,
@@ -31,11 +42,6 @@ from .extraction import (
     extract_gfx_contents,
     resolve_ffdec,
 )
-from .avm1.pcode_normalization import NormalizationResult, normalize_file
-from .diff.core import (
-    diff_file_trees_basic,
-    hunks_are_equal,
-)
 from .utils import (
     console,
     ensure_empty_dir,
@@ -43,13 +49,7 @@ from .utils import (
     print_error,
     print_warning,
 )
-from pathlib import Path
-import shutil
-import subprocess
-from rich.table import Table
-from rich import box
-from rich.rule import Rule
-from rich.markup import escape
+from .workspace import Workspace, temp_workspace_name_for_file
 
 
 def parse_and_validate_details_filters(value: str | None) -> DiffFilter:
@@ -218,7 +218,7 @@ def normalize_scripts(
 
             try:
                 norm_stats = normalize_file(raw_script_path, normalized_script_dir)
-            except Exception as e:
+            except Exception as e:  # ruff: ignore[BLE001]
                 print_error(f"Normalization failed: {escape(str(raw_script_path))}")
                 print_error(e)
                 raise typer.Exit(code=1)
@@ -366,9 +366,13 @@ def print_block_diff_in_unified_layout(block_diff: RenderableBlockDiff, debug_mo
         )
         line_count += 1
 
-    if debug_mode and block.is_paired() and block_diff.lang == "actionscript":
-        if any(hunks_are_equal(a, b) for a, b in block_diff.hunk_pairs):
-            print_debug("At least one pair of hunks are equal (different p-code but same decompiled ActionScript).")
+    if (
+        debug_mode
+        and block.is_paired()
+        and block_diff.lang == "actionscript"
+        and any(hunks_are_equal(a, b) for a, b in block_diff.hunk_pairs)
+    ):
+        print_debug("At least one pair of hunks are equal (different p-code but same decompiled ActionScript).")
 
     if debug_mode and len(block_diff.hunk_pairs) > 1:
         print_debug("This block has more than one hunk.")
@@ -407,9 +411,15 @@ def print_block_diff_in_split_layout(block_diff: RenderableBlockDiff, debug_mode
         print_debug("This block has more than one hunk.")
 
     for hunk_a, hunk_b in block_diff.hunk_pairs:
-        if debug_mode and block.is_paired() and block_diff.lang == "actionscript":
-            if hunk_a is not None and hunk_b is not None and hunks_are_equal(hunk_a, hunk_b):
-                print_debug("Different p-code but same decompiled ActionScript.")
+        if (
+            debug_mode
+            and block.is_paired()
+            and block_diff.lang == "actionscript"
+            and hunk_a is not None
+            and hunk_b is not None
+            and hunks_are_equal(hunk_a, hunk_b)
+        ):
+            print_debug("Different p-code but same decompiled ActionScript.")
 
         diff_view = build_split_layout_for_hunk_pair(hunk_a, hunk_b, block_diff=block_diff)
 

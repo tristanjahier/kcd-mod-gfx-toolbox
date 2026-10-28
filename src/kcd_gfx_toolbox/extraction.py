@@ -1,7 +1,7 @@
-from pathlib import Path
 import platform
 import shutil
 import subprocess
+from pathlib import Path
 
 
 def resolve_ffdec(arg: Path | None) -> Path:

@@ -1,13 +1,15 @@
 from dataclasses import dataclass
+
 import pytest
+
 from kcd_gfx_toolbox.avm1.pcode_parsing import PcodeBlock, PcodeLine
 from kcd_gfx_toolbox.diff.core import TextHunk, TextHunkLine
 from kcd_gfx_toolbox.diff.rendering import (
     RenderDiffSpanPair,
     _convert_span_from_normalized_pcode_to_raw,
     _convert_span_from_pcode_to_actionscript,
-    _merge_overlapping_span_pairs,
     _merge_overlapping_hunk_pairs,
+    _merge_overlapping_span_pairs,
 )
 
 

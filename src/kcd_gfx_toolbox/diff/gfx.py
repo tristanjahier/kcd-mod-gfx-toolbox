@@ -1,12 +1,15 @@
 """Diff logic specific to GFx files: script matching, block-level pairing, and label/register realignment."""
 
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import cast
-from kcd_gfx_toolbox.utils import list_tree_files, read_file_lines
+
 from kcd_gfx_toolbox.avm1.pcode_alignment import align_labels_in_text, align_registers_in_text
+from kcd_gfx_toolbox.utils import list_tree_files, read_file_lines
+
 from .core import FileDiff, TextDiffSpan, diff_file_trees, diff_texts, format_path_rename_git_style
 
 

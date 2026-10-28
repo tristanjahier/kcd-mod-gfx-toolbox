@@ -1,13 +1,15 @@
 import re
-import pytest
 from pathlib import Path
+
+import pytest
+
 from kcd_gfx_toolbox.diff.core import (
     DiffAnnotatedHunk,
     FileDiff,
-    TextHunk,
-    TextHunkLine,
     TextDiff,
     TextDiffSpan,
+    TextHunk,
+    TextHunkLine,
     _pair_hunks_by_similarity_dp,
     align_hunk_pair_edge_context,
     align_hunk_pairs,

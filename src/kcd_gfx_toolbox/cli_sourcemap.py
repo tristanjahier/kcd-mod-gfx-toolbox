@@ -1,16 +1,19 @@
 from __future__ import annotations
-from typing import Annotated
+
 from pathlib import Path
+from typing import Annotated
+
+import typer
 from pygments.lexers import ActionScriptLexer
 from rich.markup import escape
 from rich.rule import Rule
 from rich.text import Text
-import typer
+
+from .avm1.pcode_normalization import normalize_block, split_into_blocks
 from .avm1.pcode_parsing import parse_pcode_file
-from .avm1.pcode_normalization import split_into_blocks, normalize_block
-from .view.split_layout import SplitLayout, SplitLayoutTextLine, SplitLayoutTextPane
 from .swd import build_pcode_to_actionscript_line_map, parse_swd_file
 from .utils import console, print_error, read_file_lines
+from .view.split_layout import SplitLayout, SplitLayoutTextLine, SplitLayoutTextPane
 from .workspace import Workspace
 
 

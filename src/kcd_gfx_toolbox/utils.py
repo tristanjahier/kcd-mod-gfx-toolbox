@@ -1,11 +1,11 @@
+import hashlib
 import re
 import shutil
-import hashlib
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
 from rich.console import Console
 from rich.markup import escape
-
 
 """Shared instance of Rich console."""
 console = Console()

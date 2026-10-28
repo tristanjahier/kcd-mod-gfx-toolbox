@@ -1,9 +1,11 @@
 from __future__ import annotations
+
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-import re
 from typing import Literal, Self, TypeGuard
+
 from .pcode_utils import extract_label_from_line
 
 
@@ -194,7 +196,7 @@ def parse_pcode_lines(lines: list[str]) -> PcodeBlock:
                 type = "numeric"
             elif token.lower() in ["true", "false"]:
                 type = "boolean"
-                token = True if token.lower() == "true" else False
+                token = token.lower() == "true"
             else:
                 type = "symbol"
 

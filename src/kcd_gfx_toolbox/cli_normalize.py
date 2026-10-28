@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
-
 from pathlib import Path
 from typing import Annotated
-from rich.markup import escape
+
 import typer
+from rich.markup import escape
+
 from .avm1.pcode_normalization import normalize_file
 from .utils import console, print_error
 

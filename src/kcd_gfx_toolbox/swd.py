@@ -4,8 +4,8 @@ https://github.com/jindrapetrik/flashdebugger
 In particular, this file: src/com/jpexs/debugger/flash/SWD.java
 """
 
-import struct
 import json
+import struct
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -169,8 +169,7 @@ def propagate_mapped_lines_to_subsequent_unmapped_lines(line_map: dict[int, int 
 
     last_mapped_line = None
 
-    for ln in line_map:
-        mapped_line = line_map[ln]
+    for ln, mapped_line in line_map.items():
         if mapped_line is not None:
             last_mapped_line = mapped_line
 

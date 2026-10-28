@@ -1,10 +1,11 @@
 """Generic text and file diff primitives, with no knowledge of GFx."""
 
-from dataclasses import dataclass, field, replace
 import difflib
+import itertools
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal, NamedTuple, Self
-import itertools
+
 from kcd_gfx_toolbox.utils import list_tree_files, read_file_lines, sha256_file
 
 
@@ -343,7 +344,7 @@ class TextHunk(list[TextHunkLine]):
 
     def reannotated(self, is_context: bool = False, is_deletion: bool = False, is_addition: bool = False) -> Self:
         return self.__class__(
-            (ln.reannotate(is_context=is_context, is_deletion=is_deletion, is_addition=is_addition) for ln in self)
+            ln.reannotate(is_context=is_context, is_deletion=is_deletion, is_addition=is_addition) for ln in self
         )
 
     def merged(self, *other: Self) -> Self:
@@ -633,8 +634,8 @@ def align_hunk_pairs(hunks_1: list[TextHunk], hunks_2: list[TextHunk]) -> list[t
 
     seqmatch = difflib.SequenceMatcher(
         None,
-        ["\n".join((line.text for line in h)) for h in hunks_1],
-        ["\n".join((line.text for line in h)) for h in hunks_2],
+        ["\n".join(line.text for line in h) for h in hunks_1],
+        ["\n".join(line.text for line in h) for h in hunks_2],
         autojunk=False,
     )
 
