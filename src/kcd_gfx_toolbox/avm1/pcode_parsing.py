@@ -42,6 +42,10 @@ class PcodeLine(ABC):
 class PcodeInstruction(PcodeLine):
     opcode: str
     operands: list[PcodeOperand] = field(default_factory=list)
+    opening_brace: bool = field(default=False)
+
+    def has_opening_brace(self) -> bool:
+        return self.opening_brace
 
     def is_function_definition(self) -> bool:
         return self.opcode in ["DefineFunction", "DefineFunction2"]
@@ -57,7 +61,7 @@ class PcodeInstruction(PcodeLine):
         if self.operands:
             line += " " + ", ".join([op.render() for op in self.operands])
 
-        if self.is_function_definition():
+        if self.has_opening_brace():
             line += " {"
 
         return line
@@ -202,7 +206,12 @@ def parse_pcode_lines(lines: list[str]) -> PcodeBlock:
 
             operands.append(PcodeOperand(type=type, value=token))
 
-        pcode_lines.append(PcodeInstruction(source_lines=[i], opcode=opcode, operands=operands, label=label_def))
+        has_opening_brace = len(tokens) > 0 and tokens[-1][1] == "{"
+        pcode_lines.append(
+            PcodeInstruction(
+                source_lines=[i], opcode=opcode, operands=operands, label=label_def, opening_brace=has_opening_brace
+            )
+        )
 
     return PcodeBlock(lines=pcode_lines)
 

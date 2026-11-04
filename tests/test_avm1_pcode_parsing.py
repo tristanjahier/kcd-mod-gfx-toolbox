@@ -118,6 +118,7 @@ def test_parse_pcode_lines():
                     PcodeOperand(type="boolean", value=True),
                     PcodeOperand(type="boolean", value=False),
                 ],
+                opening_brace=True,
             ),
             PcodeInstruction(
                 source_lines=[7],
@@ -173,6 +174,7 @@ def test_parse_pcode_lines():
                     PcodeOperand(type="boolean", value=False),
                 ],
                 label="loc1312",
+                opening_brace=True,
             ),
             PcodeInstruction(
                 source_lines=[20],
@@ -195,6 +197,99 @@ def test_parse_pcode_lines_label_on_delimiter():
 
     assert pcode_parsing.parse_pcode_lines(pcode_sample) == PcodeBlock(
         lines=[PcodeStructural(source_lines=[0], value="}", label="loc4qsd6")]
+    )
+
+
+def test_parse_pcode_lines_opening_braces():
+    # This test pins down that the opening braces ("{") are parsed from the source,
+    # regardless of the opcode (like `DefineFunction`).
+    pcode_sample = sample_text_lines("""
+        loc3421:Try register0 {
+        Push register2, "GetMoneyForString"
+        CallMethod
+        Push 1, "Math"
+        SetVariable
+        }
+        Catch {
+        Push "Error"
+        GetVariable
+        }
+        DefineFunction2 "EYAAAA", 0
+        SyntheticOpener {
+        }
+    """)
+
+    pcode_block = pcode_parsing.parse_pcode_lines(pcode_sample)
+
+    assert pcode_block == PcodeBlock(
+        lines=[
+            PcodeInstruction(
+                source_lines=[0],
+                opcode="Try",
+                operands=[
+                    PcodeOperand(type="symbol", value="register0"),
+                ],
+                label="loc3421",
+                opening_brace=True,
+            ),
+            PcodeInstruction(
+                source_lines=[1],
+                opcode="Push",
+                operands=[
+                    PcodeOperand(type="symbol", value="register2"),
+                    PcodeOperand(type="string", value="GetMoneyForString"),
+                ],
+            ),
+            PcodeInstruction(
+                source_lines=[2],
+                opcode="CallMethod",
+            ),
+            PcodeInstruction(
+                source_lines=[3],
+                opcode="Push",
+                operands=[
+                    PcodeOperand(type="numeric", value="1"),
+                    PcodeOperand(type="string", value="Math"),
+                ],
+            ),
+            PcodeInstruction(
+                source_lines=[4],
+                opcode="SetVariable",
+            ),
+            PcodeStructural(source_lines=[5], value="}"),
+            PcodeInstruction(
+                source_lines=[6],
+                opcode="Catch",
+                opening_brace=True,
+            ),
+            PcodeInstruction(
+                source_lines=[7],
+                opcode="Push",
+                operands=[
+                    PcodeOperand(type="string", value="Error"),
+                ],
+            ),
+            PcodeInstruction(
+                source_lines=[8],
+                opcode="GetVariable",
+            ),
+            PcodeStructural(source_lines=[9], value="}"),
+            PcodeInstruction(
+                source_lines=[10],
+                opcode="DefineFunction2",
+                operands=[
+                    PcodeOperand(type="string", value="EYAAAA"),
+                    PcodeOperand(type="numeric", value="0"),
+                ],
+                opening_brace=False,
+            ),
+            PcodeInstruction(
+                source_lines=[11],
+                opcode="SyntheticOpener",
+                opening_brace=True,
+            ),
+            PcodeStructural(source_lines=[12], value="}"),
+        ]
     )
 
 
@@ -266,6 +361,7 @@ def test_PcodeBlock_render():
                     PcodeOperand(type="boolean", value=True),
                     PcodeOperand(type="boolean", value=False),
                 ],
+                opening_brace=True,
             ),
             PcodeInstruction(
                 source_lines=[7],
@@ -321,6 +417,7 @@ def test_PcodeBlock_render():
                     PcodeOperand(type="boolean", value=False),
                 ],
                 label="loc1312",
+                opening_brace=True,
             ),
             PcodeInstruction(
                 source_lines=[19],
@@ -364,6 +461,30 @@ def test_PcodeBlock_render_label_on_blank_line():
     pcode_block = PcodeBlock(lines=[PcodeBlankLineWithLabel(source_lines=[90], label="L311")])
 
     assert pcode_block.render() == "L311:"
+
+
+def test_PcodeBlock_render_opening_brace_regardless_of_opcode():
+    pcode_block = PcodeBlock(lines=[PcodeInstruction(source_lines=[723], opcode="Toto", opening_brace=True)])
+
+    assert pcode_block.render() == "Toto {"
+
+    pcode_block = PcodeBlock(
+        lines=[
+            PcodeInstruction(
+                source_lines=[6],
+                opcode="DefineFunction",
+                operands=[
+                    PcodeOperand(type="string", value="Titi"),
+                    PcodeOperand(type="numeric", value="0"),
+                    PcodeOperand(type="numeric", value="1"),
+                    PcodeOperand(type="boolean", value=False),
+                ],
+                opening_brace=False,
+            ),
+        ]
+    )
+
+    assert pcode_block.render() == 'DefineFunction "Titi", 0, 1, false'
 
 
 def test_PcodeBlock_render_canonicalizes_whitespace():
