@@ -897,10 +897,9 @@ def resolve_branch_target(
 
 def build_function_scope_control_flow(
     lines: list[PcodeLine], scope_start_idx: int, scope_end_idx: int
-) -> tuple[dict[int, list[int]], set[int]] | None:
+) -> tuple[dict[int, list[int]], set[int]]:
     """
-    Build a successor map over the function scope, or return None when the scope holds
-    something this analysis cannot model, in which case no initializer may be dropped.
+    Build a successor map over the function scope.
 
     Nested function bodies are stepped over: defining a function does not execute it, so control
     flows from the definition to whatever follows its closing brace.
@@ -923,13 +922,12 @@ def build_function_scope_control_flow(
     while i < scope_end_idx:
         line = lines[i]
 
-        if isinstance(line, PcodeStructural):
-            return None  # a closing brace where none was expected: give up
-
         if line.label is not None:
             label_targets[line.label.lower()] = i
 
-        nodes.append(i)
+        # Accept closing braces (PcodeStructural) as nodes when they have a label (even though it should never happen).
+        if is_pcode_instruction(line) or line.label is not None:
+            nodes.append(i)
 
         # Step over nested functions.
         if is_pcode_instruction(line) and line.is_function_definition():
@@ -939,7 +937,8 @@ def build_function_scope_control_flow(
         i += 1
 
     # Map every node to its immediate follower node index.
-    # It sounds trivial but it is NOT, because `nodes` has gaps wherever a nested function body was stepped over.
+    # It sounds trivial but it is NOT, because `nodes` has gaps, wherever a nested function body
+    # or a closing brace was stepped over.
     follower: dict[int, int] = {idx: nodes[pos + 1] for pos, idx in enumerate(nodes) if pos + 1 < len(nodes)}
 
     successors: dict[int, list[int]] = {}
@@ -952,7 +951,7 @@ def build_function_scope_control_flow(
         fallthrough = [follower[idx]] if idx in follower else []
 
         if not is_pcode_instruction(line):
-            # In this context, a non-instruction should be a blank line with a label.
+            # In this context, a non-instruction is a closing brace, or a blank line, with a label.
             successors[idx] = fallthrough
             continue
 
@@ -1128,12 +1127,7 @@ def strip_dead_undefined_register_initializers(lines: list[PcodeLine]) -> list[P
     if not initializer_triples:
         return lines
 
-    control_flow = build_function_scope_control_flow(lines, scope_start_idx, scope_end_idx)
-
-    if control_flow is None:
-        return lines  # unanalysable scope => keep everything untouched
-
-    successors, unresolved_branches = control_flow
+    successors, unresolved_branches = build_function_scope_control_flow(lines, scope_start_idx, scope_end_idx)
 
     to_drop: set[int] = set()
 

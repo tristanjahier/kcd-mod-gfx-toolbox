@@ -1759,6 +1759,50 @@ def test_strip_dead_undefined_register_initializers_drops_when_every_branch_over
     """)
 
 
+def test_strip_dead_undefined_register_initializers_drops_when_overwritten_before_a_closing_brace():
+    # Assert that the presence of closing braces in the block does not prevent the control-flow analysis
+    # from concluding that `register1` is overwritten before any read, and therefore its initializer triple
+    # can be safely dropped.
+    pcode_sample = sample_pcode("""
+        DefineFunction "SwitchQuestLog", 0 {
+        Push undefined
+        StoreRegister 1
+        Pop
+        Push 1
+        StoreRegister 1
+        Pop
+        Try register0 {
+        Push register1
+        Trace
+        }
+        Catch {
+        Pop
+        }
+        Push register1
+        Return
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == sample_text_lines("""
+        DefineFunction "SwitchQuestLog", 0 {
+        Push 1
+        StoreRegister 1
+        Pop
+        Try register0 {
+        Push register1
+        Trace
+        }
+        Catch {
+        Pop
+        }
+        Push register1
+        Return
+        }
+    """)
+
+
 def test_strip_dead_undefined_register_initializers_drops_when_a_branch_leaves_the_function():
     # `loc9443` is not defined in this function: this is the usual case where an `if (cond) return;`
     # compiles to a jump landing just past the block. That ends the function execution, and registers
