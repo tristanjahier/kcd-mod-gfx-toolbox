@@ -1105,6 +1105,8 @@ def strip_dead_undefined_register_initializers(lines: list[PcodeLine]) -> list[P
 
     This pass only handles `DefineFunction2` functions, because the control-flow analysis relies on registers
     being private to each call. `DefineFunction` registers are shared/global, so their triples are kept.
+    So are triples in a `DefineFunction2` whose register index is at or above the function's register count,
+    as that could target a shared/global register too.
     Ruffle, an open-source Flash Player emulator written in Rust, implements AVM1 registers this way:
     - https://github.com/ruffle-rs/ruffle/blob/f24403b5a801b442750241f0eb0806d1c28f7561/core/src/avm1/runtime.rs#L71-L73
     - https://github.com/ruffle-rs/ruffle/blob/f24403b5a801b442750241f0eb0806d1c28f7561/swf/src/avm1/types.rs#L131-L150
@@ -1143,10 +1145,17 @@ def strip_dead_undefined_register_initializers(lines: list[PcodeLine]) -> list[P
         return lines
 
     successors, unresolved_branches = build_function_scope_control_flow(lines, scope_start_idx, scope_end_idx)
+    register_count = int(outer_function_header.operands[2].value)
 
     to_drop: set[int] = set()
 
     for triple_idx in initializer_triples:
+        store_register = lines[triple_idx + 1]
+        assert is_pcode_instruction(store_register)
+
+        if int(store_register.operands[0].value) >= register_count:
+            continue  # not a private register
+
         if undefined_initializer_could_be_read(lines, successors, unresolved_branches, triple_idx):
             continue
 

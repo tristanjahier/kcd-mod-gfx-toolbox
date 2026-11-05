@@ -1540,6 +1540,35 @@ def test_strip_dead_undefined_register_initializers_leaves_v1_function_blocks_un
     assert [ln.render() for ln in stripped] == [ln.render() for ln in pcode_sample.lines]
 
 
+def test_strip_dead_undefined_register_initializers_keeps_a_triple_at_or_above_the_register_count():
+    # Neither register is read. With the function's register count of 3, `register2` is private so
+    # its triple is dropped, whereas `register3` is not, so its triple is kept.
+    pcode_sample = sample_pcode("""
+        DefineFunction2 "ClearTooltip", 0, 3, false, false, true, false, true, false, true, false, false {
+        Push undefined
+        StoreRegister 2
+        Pop
+        Push undefined
+        StoreRegister 3
+        Pop
+        Push "x"
+        Trace
+        }
+    """)
+
+    stripped = strip_dead_undefined_register_initializers(pcode_sample.lines)
+
+    assert [ln.render() for ln in stripped] == sample_text_lines("""
+        DefineFunction2 "ClearTooltip", 0, 3, false, false, true, false, true, false, true, false, false {
+        Push undefined
+        StoreRegister 3
+        Pop
+        Push "x"
+        Trace
+        }
+    """)
+
+
 def test_strip_dead_undefined_register_initializers_ignores_the_undefined_string_literal():
     pcode_sample = sample_pcode("""
         DefineFunction2 "SetItemLabel", 0, 2, false, false, true, false, true, false, true, false, false {
