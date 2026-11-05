@@ -67,19 +67,20 @@ def find_function_name_and_start_line(
     return None
 
 
-def find_function_end_line(lines: list[PcodeLine], define_function_idx: int) -> int:
+def find_scope_end_line(lines: list[PcodeLine], scope_start_idx: int) -> int:
     """
-    Find the index of the line closing the function that starts at `define_function_idx`.
-    Use brace-depth tracking to avoid stopping at nested function boundaries.
+    Find the index of the line closing the scope that starts at `scope_start_idx`.
+
+    Use brace-depth tracking to avoid stopping at nested scope boundaries.
     Fall back to last line if no closing brace was found.
     """
     depth = 0
     opening_seen = False
 
-    for i in range(define_function_idx, len(lines)):
+    for i in range(scope_start_idx, len(lines)):
         line = lines[i]
 
-        if is_pcode_instruction(line) and line.opcode in ["DefineFunction", "DefineFunction2"]:
+        if is_pcode_instruction(line) and line.has_opening_brace():
             opening_seen = True
             depth += 1
             continue
@@ -87,7 +88,7 @@ def find_function_end_line(lines: list[PcodeLine], define_function_idx: int) -> 
         if isinstance(line, PcodeStructural) and line.value == "}":
             depth -= 1
 
-        # `opening_seen == True` means that we have entered the function body.
+        # `opening_seen == True` means that we have entered a scope.
         # `depth <= 0` means we've closed it.
         if opening_seen and depth <= 0:
             return i
@@ -146,7 +147,7 @@ def split_into_blocks(pcode_file: PcodeBlock) -> list[PcodeBlock]:
                 add_block("__toplevel", next_gap_start, start)
 
             # Find the end of the function body.
-            end = find_function_end_line(pcode_file.lines, i)
+            end = find_scope_end_line(pcode_file.lines, i)
 
             # Include trailing SetMember if present on the next line.
             if (
@@ -333,7 +334,7 @@ def canonicalize_register_references_in_function_block(lines: list[PcodeLine]) -
 
     def _canonicalize_function_scope(define_idx: int) -> int:
         """Canonicalize all lines in a function scope and call itself recursively when encountering a nested function"""
-        end_idx = find_function_end_line(canonicalized_lines, define_idx)
+        end_idx = find_scope_end_line(canonicalized_lines, define_idx)
         scope = RegisterScope()
 
         # First pass: scan `StoreRegister N` instructions and pre-assign canonical indices
@@ -349,7 +350,7 @@ def canonicalize_register_references_in_function_block(lines: list[PcodeLine]) -
 
             # Skip nested function bodies. They will be canonicalized recursively later.
             if current.is_function_definition():
-                nested_end_idx = find_function_end_line(canonicalized_lines, i)
+                nested_end_idx = find_scope_end_line(canonicalized_lines, i)
                 i = nested_end_idx + 1
                 continue
 
@@ -742,7 +743,7 @@ def find_outer_function_boundaries(lines: list[PcodeLine]) -> tuple[int, int] | 
         # Some blocks do not contain a function (e.g. top-level).
         return None
 
-    return (header_idx, find_function_end_line(lines, header_idx))
+    return (header_idx, find_scope_end_line(lines, header_idx))
 
 
 def is_branch_target(line: PcodeLine, referenced_labels: set[str]) -> bool:
@@ -818,7 +819,7 @@ def find_prologue_undefined_initializers(lines: list[PcodeLine], start_idx: int,
 
         # Step over nested functions.
         if is_pcode_instruction(line) and line.is_function_definition():
-            i = find_function_end_line(lines, i) + 1
+            i = find_scope_end_line(lines, i) + 1
             continue
 
         if is_branch_target(line, referenced_labels):
@@ -932,7 +933,7 @@ def build_function_scope_control_flow(
 
         # Step over nested functions.
         if is_pcode_instruction(line) and line.is_function_definition():
-            i = find_function_end_line(lines, i) + 1
+            i = find_scope_end_line(lines, i) + 1
             continue
 
         i += 1

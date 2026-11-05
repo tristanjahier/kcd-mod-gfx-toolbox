@@ -11,8 +11,8 @@ from kcd_gfx_toolbox.avm1.pcode_normalization import (
     canonicalize_push_lines,
     canonicalize_register_references_in_function_block,
     canonicalize_string_concatenation,
-    find_function_end_line,
     find_function_name_and_start_line,
+    find_scope_end_line,
     list_label_references,
     normalize_block,
     normalize_file,
@@ -118,7 +118,7 @@ def test_find_function_name_and_start_line_malformed_2():
     assert func_info is None
 
 
-def test_find_function_end_line_standard():
+def test_find_scope_end_line_standard():
     pcode_sample = sample_pcode("""
         Push register1, "m_DisplayedData", 0.0, "Array"
         NewObject
@@ -142,13 +142,13 @@ def test_find_function_end_line_standard():
         Push 0.0
     """)
 
-    func_end = find_function_end_line(pcode_sample.lines, 6)
+    func_end = find_scope_end_line(pcode_sample.lines, 6)
 
     assert func_end == 15
 
 
-def test_find_function_end_line_nested():
-    # The goal of this test is to ensure the function does not stop at a nested function boundary.
+def test_find_scope_end_line_nested():
+    # The goal of this test is to ensure the function does not stop at a nested scope boundary.
     pcode_sample = sample_pcode("""
         Push "GetRemoveCount"
         DefineFunction2 "", 3, 12, false, false, true, false, true, false, false, true, false, 2, "index", 3, "count", 4, "remove" {
@@ -158,6 +158,14 @@ def test_find_function_end_line_nested():
         Less2
         If loc0632
         Push register2
+        Try register0 {
+        Push register1, "onUpdateParams"
+        GetMember
+        }
+        Catch {
+        Push "Error"
+        GetVariable
+        }
         Jump loc0637
         loc0632:Push register1
         loc0637:Return
@@ -169,13 +177,13 @@ def test_find_function_end_line_nested():
         Push register2
     """)
 
-    func_end = find_function_end_line(pcode_sample.lines, 1)
+    func_end = find_scope_end_line(pcode_sample.lines, 1)
 
-    assert func_end == 14
+    assert func_end == 22
 
 
-def test_find_function_end_line_fallback():
-    pcode_sample = sample_text_lines("""
+def test_find_scope_end_line_fallback():
+    pcode_sample = sample_pcode("""
         SetMember
         Push register2, "GetMoneyForString"
         DefineFunction2 "", 0, 2, false, false, true, false, true, false, false, true, false {
@@ -186,9 +194,9 @@ def test_find_function_end_line_fallback():
         Push "round"
         CallMethod
         Multiply
-    """)
+    """).lines
 
-    func_end = find_function_end_line(pcode_sample, 2)
+    func_end = find_scope_end_line(pcode_sample, 2)
 
     assert func_end == 9
 
