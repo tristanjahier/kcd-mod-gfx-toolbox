@@ -5,7 +5,7 @@ LABEL_PREFIXED_LINE_RE = re.compile(rf"^\s*(?P<prefix>(?P<label>{WORD_TOKEN})\s*
 LABEL_REFERENCED_LINE_RE = re.compile(rf"^(?P<opcode>If|Jump)\s+(?P<label>{WORD_TOKEN})$", flags=re.IGNORECASE)
 
 REGISTER_REFERENCE_RE = re.compile(r"\bregister(?P<regindex>\d+)\b")
-PUSH_REGISTER_RE = re.compile(rf"^\s*Push\s+.*(?P<register>{REGISTER_REFERENCE_RE.pattern}).*")
+REGISTER_REFERENCED_LINE_RE = re.compile(rf"^\s*(?:Push|Try)\s+.*(?P<register>{REGISTER_REFERENCE_RE.pattern}).*")
 STORE_REGISTER_RE = re.compile(r"^\s*StoreRegister\s+(?P<regindex>\d+)\s*")
 
 

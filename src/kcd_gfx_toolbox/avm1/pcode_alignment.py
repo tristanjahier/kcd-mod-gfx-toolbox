@@ -4,8 +4,8 @@ from collections import Counter, defaultdict
 from .pcode_parsing import tokenize_line
 from .pcode_utils import (
     LABEL_REFERENCED_LINE_RE,
-    PUSH_REGISTER_RE,
     REGISTER_REFERENCE_RE,
+    REGISTER_REFERENCED_LINE_RE,
     STORE_REGISTER_RE,
     extract_label_from_line,
     strip_label,
@@ -165,7 +165,7 @@ def neutralize_registers_in_line(line: str) -> str:
     """
     labelless_line, label_prefix = extract_label_from_line(line)
 
-    if PUSH_REGISTER_RE.match(labelless_line):
+    if REGISTER_REFERENCED_LINE_RE.match(labelless_line):
         tokens = tokenize_line(labelless_line)
         register_tokens = [tok for tok in tokens if REGISTER_REFERENCE_RE.fullmatch(tok[1])]
         for pos, reg_tok in reversed(register_tokens):
@@ -183,11 +183,11 @@ def neutralize_registers_in_line(line: str) -> str:
 
 def extract_registers_from_line(line: str) -> list[str]:
     """
-    Extract all register references from a `Push` or `StoreRegister` line if any.
+    Extract all register references from a `Push`, `Try` or `StoreRegister` line if any.
     """
     line = strip_label(line)
 
-    if PUSH_REGISTER_RE.match(line):
+    if REGISTER_REFERENCED_LINE_RE.match(line):
         tokens = tokenize_line(line)
         return [tok[1] for tok in tokens if REGISTER_REFERENCE_RE.fullmatch(tok[1])]
 
@@ -279,7 +279,7 @@ def remap_registers_in_line(line: str, register_map: dict[str, str]) -> str:
     """
     labelless_line, label_prefix = extract_label_from_line(line)
 
-    if match := PUSH_REGISTER_RE.match(labelless_line):
+    if match := REGISTER_REFERENCED_LINE_RE.match(labelless_line):
         old_registers = extract_registers_from_line(labelless_line)
         new_registers = [register_map[reg] for reg in old_registers if reg in register_map]
 

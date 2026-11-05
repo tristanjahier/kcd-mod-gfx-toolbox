@@ -338,6 +338,11 @@ def test_neutralize_registers_in_line_store_register():
     assert neutralize_registers_in_line("StoreRegister 4") == "StoreRegister N"
 
 
+def test_neutralize_registers_in_line_try_register():
+    assert neutralize_registers_in_line("Try register4 {") == "Try registerN {"
+    assert neutralize_registers_in_line("L1:Try register4 {") == "L1:Try registerN {"
+
+
 def test_neutralize_registers_in_line_label_untouched():
     assert neutralize_registers_in_line("L1:Push register8") == "L1:Push registerN"
     assert neutralize_registers_in_line("locmine:StoreRegister 56") == "locmine:StoreRegister N"
@@ -347,6 +352,8 @@ def test_neutralize_registers_in_line_non_register_instructions_untouched():
     assert neutralize_registers_in_line("Push 1") == "Push 1"
     assert neutralize_registers_in_line("Add2") == "Add2"
     assert neutralize_registers_in_line("If loc96") == "If loc96"
+    assert neutralize_registers_in_line("Try {") == "Try {"
+    assert neutralize_registers_in_line('Try "register4" {') == 'Try "register4" {'
 
 
 def test_extract_registers_from_line_push_register():
@@ -367,11 +374,17 @@ def test_extract_registers_from_line_store_register():
     assert extract_registers_from_line("StoreRegister 0") == ["register0"]
 
 
+def test_extract_registers_from_line_try_register():
+    assert extract_registers_from_line("Try register4 {") == ["register4"]
+    assert extract_registers_from_line("L10g:Try register12 {") == ["register12"]
+
+
 def test_extract_registers_from_line_without_registers():
     assert extract_registers_from_line("Push 1") == []
     assert extract_registers_from_line('Push "dsfsdf"') == []
     assert extract_registers_from_line("GetMember") == []
     assert extract_registers_from_line("Pop") == []
+    assert extract_registers_from_line('Try "register4" {') == []
 
 
 def test_build_register_alignment_map_empty_texts():
@@ -458,8 +471,39 @@ def test_remap_registers_in_line_store_register():
     assert remap_registers_in_line("StoreRegister 8", {"register8": "register4"}) == "StoreRegister 4"
 
 
+def test_remap_registers_in_line_try_register():
+    assert remap_registers_in_line("Try register8 {", {"register8": "register4"}) == "Try register4 {"
+    assert remap_registers_in_line("loc1312:Try register8 {", {"register8": "register4"}) == "loc1312:Try register4 {"
+
+
 def test_remap_registers_in_line_unknown_register_unchanged():
     assert remap_registers_in_line("Push register8", {"register9": "register4"}) == "Push register8"
+
+
+def test_align_registers_in_text_renames_try_register_operands():
+    text1 = sample_text_lines("""
+        Try register2 {
+        Push 1
+        Pop
+        }
+        Catch {
+        Push register2
+        Trace
+        }
+    """)
+
+    text2 = sample_text_lines("""
+        Try register5 {
+        Push 1
+        Pop
+        }
+        Catch {
+        Push register5
+        Trace
+        }
+    """)
+
+    assert align_registers_in_text(text2, text1) == text1
 
 
 def test_align_registers_in_text_for_diff_no_register_map_no_changes():
