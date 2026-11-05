@@ -1098,23 +1098,32 @@ def drop_lines_preserving_sources(lines: list[PcodeLine], to_drop: set[int]) -> 
 
 def strip_dead_undefined_register_initializers(lines: list[PcodeLine]) -> list[PcodeLine]:
     """
-    Remove `Push undefined` / `StoreRegister N` / `Pop` triples from a function's prologue
+    Remove `Push undefined` / `StoreRegister N` / `Pop` triples from a v2 function's prologue
     when no observable read can depend on the `undefined` value they set.
 
     These explicit initializations are usually an artifact of decompilation/recompilation with ffdec.
 
+    This pass only handles `DefineFunction2` functions, because the control-flow analysis relies on registers
+    being private to each call. `DefineFunction` registers are shared/global, so their triples are kept.
+    Ruffle, an open-source Flash Player emulator written in Rust, implements AVM1 registers this way:
+    - https://github.com/ruffle-rs/ruffle/blob/f24403b5a801b442750241f0eb0806d1c28f7561/core/src/avm1/runtime.rs#L71-L73
+    - https://github.com/ruffle-rs/ruffle/blob/f24403b5a801b442750241f0eb0806d1c28f7561/swf/src/avm1/types.rs#L131-L150
+    - https://github.com/ruffle-rs/ruffle/blob/f24403b5a801b442750241f0eb0806d1c28f7561/core/src/avm1/activation.rs#L2489-L2503
+
     Example:
-        DefineFunction "findCloud", 1, "id" {
+        DefineFunction2 "findCloud", 2, 6, false, false, true, false, true, ... {
         Push undefined
-        StoreRegister 1
+        StoreRegister 3
         Pop
         ...
 
     The scope is the *outer* function of the block only; nested functions are left alone.
     A triple is kept whenever control flow is ambiguous.
 
-    Caveat: it must run *before* `canonicalize_register_references_in_function_block` to ensure that the
-    potential gaps created by dropping `StoreRegister` instructions get closed.
+    Caveat: it must run *before* `canonicalize_function_definition_headers`, which erases the difference
+    between `DefineFunction` and `DefineFunction2`.
+    It must also run *before* `canonicalize_register_references_in_function_block` to ensure that
+    the potential gaps created by dropping `StoreRegister` instructions get closed.
     """
     scope = find_outer_function_boundaries(lines)
 
@@ -1122,6 +1131,12 @@ def strip_dead_undefined_register_initializers(lines: list[PcodeLine]) -> list[P
         return lines  # not a function block => no prologue, keep everything untouched
 
     scope_start_idx, scope_end_idx = scope
+    outer_function_header = lines[scope_start_idx]
+    assert is_pcode_instruction(outer_function_header)
+
+    if outer_function_header.opcode != "DefineFunction2":
+        return lines  # the outermost function is a v1 function: give up
+
     initializer_triples = find_prologue_undefined_initializers(lines, scope_start_idx, scope_end_idx)
 
     if not initializer_triples:
@@ -1150,8 +1165,8 @@ def normalize_block(block: PcodeBlock) -> PcodeBlock:
     lines = block.lines
     lines = canonicalize_push_lines(lines)
     lines = canonicalize_numeric_literals(lines)
-    lines = canonicalize_function_definition_headers(lines)
     lines = strip_dead_undefined_register_initializers(lines)
+    lines = canonicalize_function_definition_headers(lines)
     lines = canonicalize_register_references_in_function_block(lines)
     lines = strip_unreferenced_label_definitions(lines)
     lines = canonicalize_labels(lines)
