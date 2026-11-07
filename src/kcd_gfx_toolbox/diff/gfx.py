@@ -7,8 +7,9 @@ from enum import StrEnum
 from pathlib import Path
 from typing import cast
 
-from kcd_gfx_toolbox.avm1.pcode_alignment import align_labels_in_text, align_registers_in_text
-from kcd_gfx_toolbox.utils import list_tree_files, read_file_lines
+from kcd_gfx_toolbox.avm1.pcode_alignment import align_block_b_on_block_a
+from kcd_gfx_toolbox.avm1.pcode_parsing import parse_pcode_file
+from kcd_gfx_toolbox.utils import list_tree_files
 
 from .core import FileDiff, TextDiffSpan, diff_file_trees, diff_texts, format_path_rename_git_style
 
@@ -282,12 +283,11 @@ def refine_block_diffs(diffset: GfxDiffSet, normalization_dir_a: Path, normaliza
             if not block.is_paired():
                 continue
 
-            block_a = read_file_lines(normalization_dir_a / script.side_a_path / f"{block.side_a_name}.pcode")
-            block_b = read_file_lines(normalization_dir_b / script.side_b_path / f"{block.side_b_name}.pcode")
+            block_a = parse_pcode_file(normalization_dir_a / script.side_a_path / f"{block.side_a_name}.pcode")
+            block_b = parse_pcode_file(normalization_dir_b / script.side_b_path / f"{block.side_b_name}.pcode")
 
-            block_b = align_labels_in_text(block_b, anchor_lines=block_a)
-            block_b = align_registers_in_text(block_b, anchor_lines=block_a)
-            text_diff = diff_texts(block_a, block_b)
+            block_b = align_block_b_on_block_a(block_a, block_b)
+            text_diff = diff_texts([ln.render() for ln in block_a.lines], [ln.render() for ln in block_b.lines])
             block.refined_changed = text_diff.lines_changed
 
     return diffset

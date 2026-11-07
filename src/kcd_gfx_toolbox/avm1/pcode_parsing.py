@@ -216,6 +216,13 @@ def parse_pcode_lines(lines: list[str]) -> PcodeBlock:
     return PcodeBlock(lines=pcode_lines)
 
 
+def parse_pcode_line(line: str) -> PcodeLine:
+    """
+    A small wrapper to parse a single line of p-code.
+    """
+    return parse_pcode_lines([line]).lines[0]
+
+
 def parse_pcode_text(text: str) -> PcodeBlock:
     lines = text.replace("\r\n", "\n").replace("\r", "\n").splitlines()
     return parse_pcode_lines(lines)

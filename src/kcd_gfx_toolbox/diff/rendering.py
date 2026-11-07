@@ -13,7 +13,7 @@ from pygments.lexer import Lexer
 from pygments.lexers import ActionScriptLexer
 from rich.markup import escape
 
-from kcd_gfx_toolbox.avm1.pcode_alignment import align_labels_in_text, align_registers_in_text
+from kcd_gfx_toolbox.avm1.pcode_alignment import align_block_b_on_block_a
 from kcd_gfx_toolbox.avm1.pcode_parsing import PcodeBlock, merge_pcode_lines_sources
 from kcd_gfx_toolbox.swd import (
     build_pcode_to_actionscript_line_map,
@@ -149,10 +149,11 @@ def _pcode_block_render_data(
     For a given block, align side B's labels and registers to side A, compute the differences,
     then return plain-text block lines and diff spans for each side.
     """
+    if block_side_a and block_side_b:
+        block_side_b = align_block_b_on_block_a(block_side_a, block_side_b)
+
     block_a_lines = [ln.render() for ln in block_side_a.lines] if block_side_a else []
     block_b_lines = [ln.render() for ln in block_side_b.lines] if block_side_b else []
-    block_b_lines = align_labels_in_text(block_b_lines, anchor_lines=block_a_lines)
-    block_b_lines = align_registers_in_text(block_b_lines, anchor_lines=block_a_lines)
 
     diff_spans: list[RenderDiffSpanPair] = []
 
