@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import cast
 
 from kcd_gfx_toolbox.avm1.pcode_alignment import align_block_b_on_block_a
-from kcd_gfx_toolbox.avm1.pcode_parsing import parse_pcode_file
+from kcd_gfx_toolbox.avm1.pcode_parsing import PcodeBlock
 from kcd_gfx_toolbox.utils import list_tree_files
 
 from .core import FileDiff, TextDiffSpan, diff_file_trees, diff_texts, format_path_rename_git_style
@@ -269,7 +269,11 @@ def diff_normalized_script_trees(
     return diffset
 
 
-def refine_block_diffs(diffset: GfxDiffSet, normalization_dir_a: Path, normalization_dir_b: Path) -> GfxDiffSet:
+def refine_block_diffs(
+    diffset: GfxDiffSet,
+    normalized_script_blocks_a: dict[Path, list[PcodeBlock]],
+    normalized_script_blocks_b: dict[Path, list[PcodeBlock]],
+) -> GfxDiffSet:
     """
     Apply post-normalization refinement passes to script block diffs to reduce noise
     that per-script normalization alone cannot eliminate.
@@ -279,12 +283,17 @@ def refine_block_diffs(diffset: GfxDiffSet, normalization_dir_a: Path, normaliza
     Re-aligning side B against side A yields more meaningful change counts.
     """
     for script in diffset.get_scripts_with_differing_blocks():
+        assert script.side_a_path is not None
+        assert script.side_b_path is not None
+        script_a_blocks = normalized_script_blocks_a.get(script.side_a_path, [])
+        script_b_blocks = normalized_script_blocks_b.get(script.side_b_path, [])
+
         for block in diffset.paired_scripts_block_diffs[script].paired_blocks:
             if not block.is_paired():
                 continue
 
-            block_a = parse_pcode_file(normalization_dir_a / script.side_a_path / f"{block.side_a_name}.pcode")
-            block_b = parse_pcode_file(normalization_dir_b / script.side_b_path / f"{block.side_b_name}.pcode")
+            block_a = next(b for b in script_a_blocks if b.name == block.side_a_name)
+            block_b = next(b for b in script_b_blocks if b.name == block.side_b_name)
 
             block_b = align_block_b_on_block_a(block_a, block_b)
             text_diff = diff_texts([ln.render() for ln in block_a.lines], [ln.render() for ln in block_b.lines])

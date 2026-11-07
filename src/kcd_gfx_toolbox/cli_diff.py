@@ -739,7 +739,7 @@ def command(
                 block.position = block_order_b[block.side_b_name]
 
     # Refine the final difference score on block-level using more noise-reduction tweaks.
-    refine_block_diffs(diffset, workspace_a.normalization_dir(), workspace_b.normalization_dir())
+    refine_block_diffs(diffset, normalized_script_blocks_a, normalized_script_blocks_b)
 
     if diffset.is_empty():
         console.print(
