@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Self, TypeGuard
 
@@ -31,8 +31,14 @@ class PcodeLine(ABC):
     source_lines: list[int]
     label: str | None = None
 
-    def replace(self, **kwargs) -> Self:
-        return replace(self, **kwargs)
+    def replace(self, **changes) -> Self:
+        """
+        Faster substitute for `dataclasses.replace`.
+        """
+        for name in self.__dataclass_fields__:
+            if name not in changes:
+                changes[name] = getattr(self, name)
+        return self.__class__(**changes)
 
     @abstractmethod
     def render(self) -> str: ...

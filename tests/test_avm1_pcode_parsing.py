@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from kcd_gfx_toolbox.avm1 import pcode_parsing
@@ -538,6 +540,21 @@ def test_PcodeLine_replace():
     )
 
 
+def test_PcodeLine_replace_raises_on_unexpected_argument():
+    pcode_line = PcodeInstruction(
+        source_lines=[1],
+        opcode="Push",
+        operands=[
+            PcodeOperand(type="symbol", value="register2"),
+        ],
+    )
+
+    error_message = f"{type(pcode_line).__name__}.__init__() got an unexpected keyword argument 'bloblo'"
+
+    with pytest.raises(TypeError, match=re.escape(error_message)):
+        pcode_line.replace(opcode="Pop", bloblo="??", label="yapyap")
+
+
 def test_is_pcode_instruction():
     assert is_pcode_instruction(PcodeInstruction(source_lines=[1312], opcode="Toto"))
     assert not is_pcode_instruction(PcodeStructural(source_lines=[1312], value="}"))
@@ -548,3 +565,10 @@ def test_is_pcode_instruction():
 def test_PcodeBlankLineWithLabel_instanciation_without_label():
     with pytest.raises(ValueError, match="Label cannot be None or blank in PcodeBlankLineWithLabel."):
         PcodeBlankLineWithLabel(source_lines=[5], label=None)
+
+
+def test_PcodeBlankLineWithLabel_replace_without_label():
+    line = PcodeBlankLineWithLabel(source_lines=[5], label="toto")
+
+    with pytest.raises(ValueError, match="Label cannot be None or blank in PcodeBlankLineWithLabel."):
+        line.replace(label=None)
