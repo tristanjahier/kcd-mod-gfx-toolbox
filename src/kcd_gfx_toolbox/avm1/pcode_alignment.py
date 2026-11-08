@@ -11,15 +11,11 @@ def neutralize_labels_in_line(line: PcodeLine) -> PcodeLine:
     """
     label = "LABEL" if line.label is not None else None
 
-    if not is_pcode_instruction(line):
-        return line.replace(label=label)
+    if is_pcode_instruction(line) and line.opcode in ["If", "Jump"] and line.operands:
+        operands = [PcodeOperand(type="symbol", value="LABEL")] + line.operands[1:]
+        return line.replace(label=label, operands=operands)
 
-    operands = list(line.operands)  # copy!
-
-    if line.opcode in ["If", "Jump"] and operands:
-        operands[0] = PcodeOperand(type="symbol", value="LABEL")
-
-    return line.replace(label=label, operands=operands)
+    return line.replace(label=label) if label is not None else line
 
 
 def extract_jump_target_label_from_line(line: PcodeLine) -> str | None:
@@ -121,17 +117,15 @@ def remap_labels_in_line(line: PcodeLine, label_map: dict[str, str]) -> PcodeLin
     """
     label = label_map.get(line.label, line.label) if line.label is not None else None
 
-    if not is_pcode_instruction(line):
-        return line.replace(label=label)
-
-    operands = list(line.operands)  # copy!
-
-    if line.opcode in ["If", "Jump"] and operands:
+    if is_pcode_instruction(line) and line.opcode in ["If", "Jump"] and line.operands:
         old_target = str(line.operands[0].value)
         new_target = label_map.get(old_target, old_target)
-        operands[0] = PcodeOperand(type="symbol", value=new_target)
 
-    return line.replace(label=label, operands=operands)
+        if new_target != old_target:
+            operands = [PcodeOperand(type="symbol", value=new_target)] + line.operands[1:]
+            return line.replace(label=label, operands=operands)
+
+    return line.replace(label=label) if label != line.label else line
 
 
 def align_labels(block_a_lines: list[PcodeLine], block_b_lines: list[PcodeLine]) -> list[PcodeLine]:
@@ -155,16 +149,21 @@ def neutralize_registers_in_line(line: PcodeLine) -> PcodeLine:
     """
     Replace register references with `registerN` and `StoreRegister N`.
     """
-    if not is_pcode_instruction(line):
+    if not is_pcode_instruction(line) or line.opcode not in ["Push", "Try", "StoreRegister"] or not line.operands:
         return line
 
     operands = list(line.operands)  # copy!
 
-    if line.opcode in ["Push", "Try"] and operands:
+    if line.opcode in ["Push", "Try"]:
+        changed = False
         for i, operand in enumerate(operands):
             if operand.type == "symbol" and REGISTER_REFERENCE_RE.fullmatch(str(operand.value)):
                 operands[i] = PcodeOperand(type="symbol", value="registerN")
-    elif line.opcode == "StoreRegister":
+                changed = True
+        if not changed:
+            return line
+
+    else:
         operands[0] = PcodeOperand(type="symbol", value="N")  # type "symbol" is unusual for StoreRegister
 
     return line.replace(operands=operands)
@@ -183,6 +182,7 @@ def extract_register_indices_from_line(line: PcodeLine) -> list[int]:
         for operand in line.operands:
             if operand.type == "symbol" and (match := REGISTER_REFERENCE_RE.fullmatch(str(operand.value))):
                 registers.append(int(match.group("regindex")))
+
     elif line.opcode == "StoreRegister":
         registers.append(int(line.operands[0].value))
 
@@ -270,20 +270,30 @@ def remap_registers_in_line(line: PcodeLine, register_map: dict[int, int]) -> Pc
     """
     Replace register references in a line according to the given register map.
     """
-    if not is_pcode_instruction(line):
+    if not is_pcode_instruction(line) or line.opcode not in ["Push", "Try", "StoreRegister"] or not line.operands:
         return line
 
     operands = list(line.operands)  # copy!
 
-    if line.opcode in ["Push", "Try"] and operands:
+    if line.opcode in ["Push", "Try"]:
+        changed = False
         for i, operand in enumerate(operands):
             if operand.type == "symbol" and (match := REGISTER_REFERENCE_RE.fullmatch(str(operand.value))):
                 old_register = int(match.group("regindex"))
                 new_register = register_map.get(old_register, old_register)
-                operands[i] = PcodeOperand(type="symbol", value=f"register{new_register}")
-    elif line.opcode == "StoreRegister":
+                if new_register != old_register:
+                    operands[i] = PcodeOperand(type="symbol", value=f"register{new_register}")
+                    changed = True
+        if not changed:
+            return line
+
+    else:
         old_register = int(operands[0].value)
         new_register = register_map.get(old_register, old_register)
+
+        if new_register == old_register:
+            return line
+
         operands[0] = PcodeOperand(type="numeric", value=str(new_register))
 
     return line.replace(operands=operands)

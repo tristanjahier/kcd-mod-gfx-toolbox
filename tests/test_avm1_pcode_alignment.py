@@ -47,6 +47,10 @@ def test_neutralize_labels_in_line_labeled_closing_brace():
     assert neutralize_labels_in_line(parse_pcode_line("lockjaw:}")) == parse_pcode_line("LABEL:}")
 
 
+def test_neutralize_labels_in_line_unlabeled_closing_brace():
+    assert neutralize_labels_in_line(parse_pcode_line("}")) == parse_pcode_line("}")
+
+
 def test_extract_jump_target_label_from_line_with_jump():
     assert extract_jump_target_label_from_line(parse_pcode_line("Jump L1")) == "L1"
 
@@ -203,9 +207,10 @@ def test_remap_labels_in_line_remaps_jump_target():
 
 def test_remap_labels_in_line_remaps_both_prefix_and_jump_target():
     label_map = {"L1": "loc_001", "L2": "l214", "L3": "L_3", "loc12": "loc13"}
-    assert remap_labels_in_line(parse_pcode_line("loc456: Jump L2"), label_map) == parse_pcode_line("loc456:Jump l214")
     assert remap_labels_in_line(parse_pcode_line("L1:Jump L2"), label_map) == parse_pcode_line("loc_001:Jump l214")
     assert remap_labels_in_line(parse_pcode_line("L3:If loc12"), label_map) == parse_pcode_line("L_3:If loc13")
+    assert remap_labels_in_line(parse_pcode_line("loc456: Jump L2"), label_map) == parse_pcode_line("loc456:Jump l214")
+    assert remap_labels_in_line(parse_pcode_line("L2: Jump loc456"), label_map) == parse_pcode_line("l214:Jump loc456")
 
 
 def test_remap_labels_in_line_unknown_label_prefix_unchanged():
@@ -230,10 +235,16 @@ def test_remap_labels_in_line_with_empty_map_unchanged():
 
 def test_remap_labels_in_line_empty_labeled_line():
     assert remap_labels_in_line(parse_pcode_line("L214:"), {"L214": "toto"}) == parse_pcode_line("toto:")
+    assert remap_labels_in_line(parse_pcode_line("L214:"), {"L215": "toto"}) == parse_pcode_line("L214:")
 
 
 def test_remap_labels_in_line_labeled_closing_brace():
     assert remap_labels_in_line(parse_pcode_line("L214:}"), {"L214": "toto"}) == parse_pcode_line("toto:}")
+    assert remap_labels_in_line(parse_pcode_line("L214:}"), {"L215": "toto"}) == parse_pcode_line("L214:}")
+
+
+def test_remap_labels_in_line_unlabeled_closing_brace():
+    assert remap_labels_in_line(parse_pcode_line("}"), {"L214": "toto"}) == parse_pcode_line("}")
 
 
 def test_align_labels_for_diff_no_label_map_no_changes():
@@ -369,19 +380,31 @@ def test_neutralize_registers_in_line_try_register():
     )
 
 
-def test_neutralize_registers_in_line_label_untouched():
+def test_neutralize_registers_in_line_label_unchanged():
     assert neutralize_registers_in_line(parse_pcode_line("L1:Push register8")) == parse_pcode_line("L1:Push registerN")
     assert neutralize_registers_in_line(parse_pcode_line("locmine:StoreRegister 56")) == parse_pcode_line(
         "locmine:StoreRegister N"
     )
 
 
-def test_neutralize_registers_in_line_non_register_instructions_untouched():
+def test_neutralize_registers_in_line_non_register_instructions_unchanged():
     assert neutralize_registers_in_line(parse_pcode_line("Push 1")) == parse_pcode_line("Push 1")
     assert neutralize_registers_in_line(parse_pcode_line("Add2")) == parse_pcode_line("Add2")
     assert neutralize_registers_in_line(parse_pcode_line("If loc96")) == parse_pcode_line("If loc96")
     assert neutralize_registers_in_line(parse_pcode_line("Try {")) == parse_pcode_line("Try {")
     assert neutralize_registers_in_line(parse_pcode_line('Try "register4" {')) == parse_pcode_line('Try "register4" {')
+
+
+def test_neutralize_registers_in_line_empty_labeled_line():
+    assert neutralize_registers_in_line(parse_pcode_line("loc2439:")) == parse_pcode_line("loc2439:")
+
+
+def test_neutralize_registers_in_line_labeled_closing_brace():
+    assert neutralize_registers_in_line(parse_pcode_line("loc2439:}")) == parse_pcode_line("loc2439:}")
+
+
+def test_neutralize_registers_in_line_unlabeled_closing_brace():
+    assert neutralize_registers_in_line(parse_pcode_line("}")) == parse_pcode_line("}")
 
 
 def test_extract_register_indices_from_line_push_register():
@@ -509,6 +532,34 @@ def test_remap_registers_in_line_try_register():
 
 def test_remap_registers_in_line_unknown_register_unchanged():
     assert remap_registers_in_line(parse_pcode_line("Push register8"), {9: 4}) == parse_pcode_line("Push register8")
+    assert remap_registers_in_line(parse_pcode_line("StoreRegister 8"), {9: 4}) == parse_pcode_line("StoreRegister 8")
+
+
+def test_remap_registers_in_line_with_empty_map_unchanged():
+    assert remap_registers_in_line(parse_pcode_line("StoreRegister 6"), {}) == parse_pcode_line("StoreRegister 6")
+    assert remap_registers_in_line(parse_pcode_line("Push register10"), {}) == parse_pcode_line("Push register10")
+
+
+def test_remap_registers_in_line_non_register_instructions_unchanged():
+    assert remap_registers_in_line(parse_pcode_line("Push 1"), {1: 2}) == parse_pcode_line("Push 1")
+    assert remap_registers_in_line(parse_pcode_line("Add2"), {2: 3}) == parse_pcode_line("Add2")
+    assert remap_registers_in_line(parse_pcode_line("If loc96"), {96: 59}) == parse_pcode_line("If loc96")
+    assert remap_registers_in_line(parse_pcode_line("Try {"), {1: 2}) == parse_pcode_line("Try {")
+    assert remap_registers_in_line(parse_pcode_line('Try "register8" {'), {8: 2}) == parse_pcode_line(
+        'Try "register8" {'
+    )
+
+
+def test_remap_registers_in_line_empty_labeled_line():
+    assert remap_registers_in_line(parse_pcode_line("loc1312:"), {9: 4}) == parse_pcode_line("loc1312:")
+
+
+def test_remap_registers_in_line_labeled_closing_brace():
+    assert remap_registers_in_line(parse_pcode_line("loc1312:}"), {0: 7}) == parse_pcode_line("loc1312:}")
+
+
+def test_remap_registers_in_line_unlabeled_closing_brace():
+    assert remap_registers_in_line(parse_pcode_line("}"), {1: 3}) == parse_pcode_line("}")
 
 
 def test_align_registers_renames_try_register_operands():
