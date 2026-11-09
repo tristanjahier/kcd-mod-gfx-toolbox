@@ -117,10 +117,11 @@ end
 set -e PYTHONDONTWRITEBYTECODE
 
 # Keep the machine from sleeping during the benchmark. `env` just runs the command, if no tool is available.
+# systemd-inhibit may exist but be denied (e.g. under WSL, or outside an active login session), so probe it first.
 set -l keep_awake env
 if command -q caffeinate
     set keep_awake caffeinate
-else if command -q systemd-inhibit
+else if command -q systemd-inhibit && systemd-inhibit --what=idle:sleep true 2>/dev/null
     set keep_awake systemd-inhibit --what=idle:sleep
 end
 
