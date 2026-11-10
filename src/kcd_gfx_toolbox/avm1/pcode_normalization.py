@@ -599,26 +599,24 @@ def canonicalize_increment_decrement_patterns(lines: list[PcodeLine]) -> list[Pc
             i += 1
             continue
 
-        hunk = lines[i : i + 4]  # current plus next 3 lines
-
         # Pattern 1: Push registerN / Push 1 / Add2|Subtract / StoreRegister N
         if (
-            _line_is_push_register(hunk[0])
-            and _line_is_push_1(hunk[1])
-            and (_line_is_add(hunk[2]) or _line_is_subtract(hunk[2]))
-            and (_line_is_store_register(hunk[3]) or _line_is_return(hunk[3]))
-            and hunk[1].label is None
-            and hunk[2].label is None
+            _line_is_push_register(lines[i])
+            and _line_is_push_1(lines[i + 1])
+            and (_line_is_add(lines[i + 2]) or _line_is_subtract(lines[i + 2]))
+            and (_line_is_store_register(lines[i + 3]) or _line_is_return(lines[i + 3]))
+            and lines[i + 1].label is None
+            and lines[i + 2].label is None
         ):
-            register_1 = REGISTER_REFERENCE_RE.match(hunk[0].operands[0].value).group("regindex")
-            register_2 = hunk[3].operands[0].value if _line_is_store_register(hunk[3]) else None
+            register_1 = REGISTER_REFERENCE_RE.match(lines[i].operands[0].value).group("regindex")
+            register_2 = lines[i + 3].operands[0].value if _line_is_store_register(lines[i + 3]) else None
 
-            if _line_is_return(hunk[3]) or register_1 == register_2:
-                opcode = "Increment" if hunk[2].opcode in ["Add", "Add2"] else "Decrement"
+            if _line_is_return(lines[i + 3]) or register_1 == register_2:
+                opcode = "Increment" if lines[i + 2].opcode in ["Add", "Add2"] else "Decrement"
                 crement_pcode = PcodeInstruction(
-                    source_lines=merge_pcode_lines_sources(hunk[1], hunk[2]), opcode=opcode, operands=[]
+                    source_lines=merge_pcode_lines_sources(lines[i + 1], lines[i + 2]), opcode=opcode, operands=[]
                 )
-                canonicalized_lines.extend([hunk[0], crement_pcode, hunk[3]])
+                canonicalized_lines.extend([lines[i], crement_pcode, lines[i + 3]])
                 i += 4
                 continue
 
@@ -630,21 +628,21 @@ def canonicalize_increment_decrement_patterns(lines: list[PcodeLine]) -> list[Pc
             and _line_is_push_string(canonicalized_lines[-1])
             and (
                 # Pair of (GetMember, SetMember|Return) OR pair of (GetVariable, SetVariable|Return).
-                _line_is_get_member(hunk[0])
-                and (_line_is_set_member(hunk[3]) or _line_is_return(hunk[3]))
-                or _line_is_get_variable(hunk[0])
-                and (_line_is_set_variable(hunk[3]) or _line_is_return(hunk[3]))
+                _line_is_get_member(lines[i])
+                and (_line_is_set_member(lines[i + 3]) or _line_is_return(lines[i + 3]))
+                or _line_is_get_variable(lines[i])
+                and (_line_is_set_variable(lines[i + 3]) or _line_is_return(lines[i + 3]))
             )
-            and _line_is_push_1(hunk[1])
-            and (_line_is_add(hunk[2]) or _line_is_subtract(hunk[2]))
-            and hunk[1].label is None
-            and hunk[2].label is None
+            and _line_is_push_1(lines[i + 1])
+            and (_line_is_add(lines[i + 2]) or _line_is_subtract(lines[i + 2]))
+            and lines[i + 1].label is None
+            and lines[i + 2].label is None
         ):
-            opcode = "Increment" if hunk[2].opcode in ["Add", "Add2"] else "Decrement"
+            opcode = "Increment" if lines[i + 2].opcode in ["Add", "Add2"] else "Decrement"
             crement_pcode = PcodeInstruction(
-                source_lines=merge_pcode_lines_sources(hunk[1], hunk[2]), opcode=opcode, operands=[]
+                source_lines=merge_pcode_lines_sources(lines[i + 1], lines[i + 2]), opcode=opcode, operands=[]
             )
-            canonicalized_lines.extend([hunk[0], crement_pcode, hunk[3]])
+            canonicalized_lines.extend([lines[i], crement_pcode, lines[i + 3]])
             i += 4
             continue
 
@@ -702,24 +700,22 @@ def canonicalize_string_concatenation(lines: list[PcodeLine]) -> list[PcodeLine]
             i += 1
             continue
 
-        hunk = lines[i : i + 3]  # current plus next 2 lines
-
         if (
-            not _line_is_push_string(hunk[0])
-            or not _line_is_push_string(hunk[1])
-            or not _line_is_stringadd(hunk[2])
-            or hunk[1].label is not None
-            or hunk[2].label is not None
+            not _line_is_push_string(lines[i])
+            or not _line_is_push_string(lines[i + 1])
+            or not _line_is_stringadd(lines[i + 2])
+            or lines[i + 1].label is not None
+            or lines[i + 2].label is not None
         ):
             canonicalized_lines.append(lines[i])
             i += 1
             continue
 
         concat_push = PcodeInstruction(
-            source_lines=merge_pcode_lines_sources(*hunk),
+            source_lines=merge_pcode_lines_sources(*lines[i : i + 3]),
             opcode="Push",
-            operands=[PcodeOperand(type="string", value=hunk[0].operands[0].value + hunk[1].operands[0].value)],
-            label=hunk[0].label,
+            operands=[PcodeOperand(type="string", value=lines[i].operands[0].value + lines[i + 1].operands[0].value)],
+            label=lines[i].label,
         )
 
         canonicalized_lines.append(concat_push)
