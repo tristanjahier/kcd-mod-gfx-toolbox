@@ -559,6 +559,35 @@ def test_canonicalize_register_references_preserves_string_literals():
     """)
 
 
+def test_canonicalize_register_references_idempotency():
+    # An already canonical input should not change when re-canonicalized.
+    pcode_sample = sample_pcode("""
+        Push register2
+        Push "SetItemQuantity"
+        DefineFunction "", 1, "count" {
+        Push 1.7
+        Push register2
+        StoreRegister 1
+        Push register3
+        }
+        SetMember
+    """)
+
+    canonicalized = canonicalize_register_references_in_function_block(pcode_sample.lines)
+
+    assert [ln.render() for ln in canonicalized] == sample_text_lines("""
+        Push register2
+        Push "SetItemQuantity"
+        DefineFunction "", 1, "count" {
+        Push 1.7
+        Push register2
+        StoreRegister 1
+        Push register3
+        }
+        SetMember
+    """)
+
+
 def test_canonicalize_register_references_isolates_nested_function_scopes():
     pcode_sample = sample_pcode("""
         Push register2
@@ -1480,6 +1509,7 @@ def test_canonicalize_geturl2():
         GetVariable
         Push 1
         Push "_loc1_"
+        GetURL2 false, false, 0
     """)
 
     canonicalized = canonicalize_geturl2(pcode_sample.lines)
@@ -1496,6 +1526,7 @@ def test_canonicalize_geturl2():
         GetVariable
         Push 1
         Push "_loc1_"
+        GetURL2 false, false, 0
     """)
 
 

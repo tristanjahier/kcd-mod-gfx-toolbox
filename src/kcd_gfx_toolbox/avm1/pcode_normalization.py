@@ -3,6 +3,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
+from typing import Any
 
 from kcd_gfx_toolbox.utils import safe_filename
 
@@ -221,6 +222,7 @@ def canonicalize_numeric_literals(lines: list[PcodeLine]) -> list[PcodeLine]:
             continue
 
         canonicalized_operands: list[PcodeOperand] = []
+        changed = False
 
         for operand in line.operands:
             if operand.type != "numeric":
@@ -235,9 +237,13 @@ def canonicalize_numeric_literals(lines: list[PcodeLine]) -> list[PcodeLine]:
             if value == "-0":
                 value = "0"
 
-            canonicalized_operands.append(PcodeOperand(type=operand.type, value=value))
+            if value != operand.value:
+                canonicalized_operands.append(operand.replace(value=value))
+                changed = True
+            else:
+                canonicalized_operands.append(operand)
 
-        canonicalized_lines.append(line.replace(operands=canonicalized_operands))
+        canonicalized_lines.append(line.replace(operands=canonicalized_operands) if changed else line)
 
     return canonicalized_lines
 
@@ -315,20 +321,35 @@ def canonicalize_register_references_in_function_block(lines: list[PcodeLine]) -
 
     def _canonicalize_line(line: PcodeInstruction, scope: RegisterScope) -> PcodeLine:
         if line.opcode == "StoreRegister":
-            canon_index = scope.canonicalize_register_index(str(line.operands[0].value))
-            return line.replace(operands=[PcodeOperand(type="numeric", value=str(canon_index))] + line.operands[1:])
+            old_index = str(line.operands[0].value)
+            canon_index = str(scope.canonicalize_register_index(old_index))
+            if canon_index != old_index:
+                return line.replace(operands=[line.operands[0].replace(value=canon_index)] + line.operands[1:])
+            else:
+                return line
+
+        if not line.operands:
+            return line
 
         canonicalized_operands: list[PcodeOperand] = []
+        changed = False
 
         for operand in line.operands:
-            if operand.type != "symbol" or not REGISTER_REFERENCE_RE.fullmatch(str(operand.value)):
+            if operand.type != "symbol" or (reg_match := REGISTER_REFERENCE_RE.fullmatch(str(operand.value))) is None:
                 canonicalized_operands.append(operand)
                 continue
 
-            reg_match = REGISTER_REFERENCE_RE.match(str(operand.value))
-            assert reg_match is not None
-            canon_index = scope.canonicalize_register_index(reg_match.group("regindex"))
-            canonicalized_operands.append(PcodeOperand(type="symbol", value=f"register{canon_index}"))
+            old_index = reg_match.group("regindex")
+            canon_index = str(scope.canonicalize_register_index(old_index))
+
+            if canon_index != old_index:
+                canonicalized_operands.append(operand.replace(value=f"register{canon_index}"))
+                changed = True
+            else:
+                canonicalized_operands.append(operand)
+
+        if not changed:
+            return line
 
         return line.replace(operands=canonicalized_operands)
 
@@ -375,7 +396,7 @@ def canonicalize_register_references_in_function_block(lines: list[PcodeLine]) -
                 i = nested_end_idx + 1
                 continue
 
-            canonicalized_lines[i] = _canonicalize_line(canonicalized_lines[i], scope)
+            canonicalized_lines[i] = _canonicalize_line(current, scope)
             i += 1
 
         return end_idx
@@ -481,20 +502,25 @@ def canonicalize_labels(lines: list[PcodeLine]) -> list[PcodeLine]:
     canonicalized_lines: list[PcodeLine] = []
 
     for line in lines:
-        canon_line = line.replace()
+        changes: dict[str, Any] = {}
 
         if line.label is not None:
             # If the line has a label prefix.
-            canon_line = canon_line.replace(label=map_label(line.label))
+            new_label = map_label(line.label)
+            if new_label != line.label:
+                changes["label"] = new_label
 
         if is_pcode_instruction(line) and line.opcode in ["If", "Jump"] and line.operands:
             # If we match exactly `If <label>` or `Jump <label>`.
-            new_target = map_label(str(line.operands[0].value))
-            canon_line = canon_line.replace(
-                operands=[PcodeOperand(type="symbol", value=str(new_target))] + line.operands[1:]
-            )
+            old_target = str(line.operands[0].value)
+            new_target = map_label(old_target)
+            if new_target != old_target:
+                changes["operands"] = [line.operands[0].replace(value=new_target)] + line.operands[1:]
 
-        canonicalized_lines.append(canon_line)
+        if changes:
+            canonicalized_lines.append(line.replace(**changes))
+        else:
+            canonicalized_lines.append(line)
 
     return canonicalized_lines
 
@@ -721,8 +747,9 @@ def canonicalize_geturl2(lines: list[PcodeLine]) -> list[PcodeLine]:
             and line.operands[0].type == "boolean"
             and line.operands[1].type == "boolean"
             and line.operands[2].type == "numeric"
+            and line.operands[2].value != "0"
         ):
-            new_operands = line.operands[:2] + [PcodeOperand(type="numeric", value="0")]
+            new_operands = line.operands[:2] + [line.operands[2].replace(value="0")]
             canonicalized_lines.append(line.replace(operands=new_operands))
         else:
             canonicalized_lines.append(line)
