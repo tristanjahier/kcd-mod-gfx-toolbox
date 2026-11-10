@@ -9,8 +9,20 @@ from typing import Literal, Self, TypeGuard
 from .pcode_utils import extract_label_from_line
 
 
+@dataclass(frozen=True)
+class _ReplaceMixin:
+    def replace(self, **changes) -> Self:
+        """
+        Faster substitute for `dataclasses.replace`.
+        """
+        for name in self.__dataclass_fields__:
+            if name not in changes:
+                changes[name] = getattr(self, name)
+        return self.__class__(**changes)
+
+
 @dataclass(frozen=True, kw_only=True)
-class PcodeOperand:
+class PcodeOperand(_ReplaceMixin):
     type: Literal["symbol", "string", "numeric", "boolean"]
     value: str | bool
 
@@ -27,18 +39,9 @@ class PcodeOperand:
 
 
 @dataclass(frozen=True, kw_only=True)
-class PcodeLine(ABC):
+class PcodeLine(ABC, _ReplaceMixin):
     source_lines: list[int]
     label: str | None = None
-
-    def replace(self, **changes) -> Self:
-        """
-        Faster substitute for `dataclasses.replace`.
-        """
-        for name in self.__dataclass_fields__:
-            if name not in changes:
-                changes[name] = getattr(self, name)
-        return self.__class__(**changes)
 
     @abstractmethod
     def render(self) -> str: ...
